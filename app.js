@@ -193,9 +193,15 @@ function buildTileEl(tile) {
   if (showIcon) {
     const iconEl = document.createElement('span');
     iconEl.className = 'tile-icon';
-    if (tile.icon && (isUrl(tile.icon) || tile.icon.startsWith('data:'))) {
+    if (tile.icon && isUrl(tile.icon)) {
       const img = document.createElement('img');
-      img.src = tile.icon.startsWith('data:') ? tile.icon : safeUrl(tile.icon);
+      img.src = safeUrl(tile.icon);
+      img.alt = tile.label || '';
+      img.loading = 'lazy';
+      iconEl.appendChild(img);
+    } else if (tile.icon && /^data:image\/[a-z+]+;base64,/.test(tile.icon)) {
+      const img = document.createElement('img');
+      img.src = tile.icon;
       img.alt = tile.label || '';
       img.loading = 'lazy';
       iconEl.appendChild(img);
@@ -483,8 +489,20 @@ fIcon.addEventListener('input', () => {
 function updateIconPreview(value) {
   iconPreviewBox.textContent = '';
   if (!value) { iconPreviewBox.textContent = '🔗'; return; }
-  if (value.startsWith('data:') || isUrl(value)) {
-    const src = value.startsWith('data:') ? value : safeUrl(value);
+
+  if (value.startsWith('data:')) {
+    // Only allow image data URLs to prevent setting non-image data as src
+    if (!/^data:image\/[a-z+]+;base64,/.test(value)) {
+      iconPreviewBox.textContent = '❓';
+      return;
+    }
+    const img = document.createElement('img');
+    img.setAttribute('src', value);
+    img.alt = 'icon';
+    img.onerror = () => { iconPreviewBox.textContent = '❓'; };
+    iconPreviewBox.appendChild(img);
+  } else if (isUrl(value)) {
+    const src = safeUrl(value);
     if (src === '#') { iconPreviewBox.textContent = '🔗'; return; }
     const img = document.createElement('img');
     img.setAttribute('src', src);
