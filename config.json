@@ -1,0 +1,68 @@
+{
+  "site": {
+    "title": "HomeLab",
+    "subtitle": "Quick Links & Status",
+    "theme": "dark"
+  },
+  "status": {
+    "enabled": true,
+    "apiUrl": "/api/status",
+    "pollIntervalSeconds": 30
+  },
+  "tiles": [
+    {
+      "id": "portainer",
+      "label": "Portainer",
+      "url": "http://localhost:9000",
+      "icon": "🐳",
+      "description": "Container management",
+      "category": "Infrastructure",
+      "container": "portainer"
+    },
+    {
+      "id": "grafana",
+      "label": "Grafana",
+      "url": "http://localhost:3000",
+      "icon": "📊",
+      "description": "Metrics & dashboards",
+      "category": "Monitoring",
+      "container": "grafana"
+    },
+    {
+      "id": "prometheus",
+      "label": "Prometheus",
+      "url": "http://localhost:9090",
+      "icon": "🔥",
+      "description": "Metrics scraping",
+      "category": "Monitoring",
+      "container": "prometheus"
+    },
+    {
+      "id": "pihole",
+      "label": "Pi-hole",
+      "url": "http://localhost:8080",
+      "icon": "🕳️",
+      "description": "DNS ad blocking",
+      "category": "Network",
+      "container": "pihole"
+    },
+    {
+      "id": "nextcloud",
+      "label": "Nextcloud",
+      "url": "http://localhost:8081",
+      "icon": "☁️",
+      "description": "Personal cloud storage",
+      "category": "Storage",
+      "container": "nextcloud"
+    },
+    {
+      "id": "jellyfin",
+      "label": "Jellyfin",
+      "url": "http://localhost:8096",
+      "icon": "🎬",
+      "description": "Media server",
+      "category": "Media",
+      "container": "jellyfin"
+    }
+  ]
+}
