@@ -1,68 +1,257 @@
 # QLS — Quick Links & Status
 
-A fast, polished homelab dashboard. Add and manage launchpad tiles through a built-in UI without editing code. Optionally display live Docker container status.
+A fast, polished homelab homepage. Manage tiles, icons, backgrounds, and status checks entirely through the UI — no code editing required.
 
 ---
 
 ## Features
 
 - ⚡ **Static-first, extremely fast** — plain HTML/CSS/JS, no framework
-- 🎨 **Polished dark theme** — responsive grid, looks great on desktop & mobile
-- ➕ **Add / Edit / Delete tiles** — through a dialog — no code editing needed
+- 🎨 **Polished dark theme** — responsive grid, looks great on desktop and mobile
+- ➕ **Add / Edit / Delete tiles** — modal dialog, no code needed
 - ↕️ **Drag-and-drop** or **↑↓ buttons** to reorder tiles
-- 🗂️ **Category grouping** — tiles can be grouped into labelled sections
-- 🐳 **Container status** — optional lightweight Python/Flask API polls Docker
-- 💾 **Local persistence** — tile data saved to `localStorage`; export/import as JSON
+- 🗂️ **Category grouping** — tiles can be organised into labelled sections
+- 🟢 **Reachability status** — pings each tile URL directly; no backend needed
+- 🐳 **Optional Docker API** — lightweight Python/Flask API for container states
+- 🖼️ **Custom background** — upload any image via Settings
+- 🔲 **Tile transparency** — adjustable opacity slider so the background shows through
+- 🔗 **New-tab control** — global default plus per-tile override
+- 👁️ **Tile visibility** — toggle icon, title, description, status dot per tile
+- 🎨 **Simple Icons** — search and use icons from [cdn.simpleicons.org](https://cdn.simpleicons.org) when creating tiles
+- 📁 **Icon upload** — upload custom PNG/SVG/JPG icons, stored in browser
+- 💾 **Local persistence** — saved to `localStorage`; export/import as JSON
 - ⌨️ **Keyboard shortcut** — `Ctrl/Cmd + K` to quickly add a tile
 
 ---
 
-## Quick start (plain web server)
+## Quick Start
 
-No build step needed. Serve the directory with any static file server:
+### Requirements
+
+- Any modern web browser
+- One of: Docker (recommended), Python 3, or Node.js
+
+### Option A — Docker Compose (recommended for NUC)
+
+This runs the static dashboard on **port 5555** and the optional Docker status API:
 
 ```bash
-# Python
-python3 -m http.server 8080
+# 1. Clone the repository
+git clone https://github.com/Mr-Vale/QLS.git
+cd QLS
 
-# Node
-npx serve .
+# 2. Start everything
+docker compose up -d
 
-# Caddy / nginx — point root to this directory
+# 3. Open in your browser
+# http://<nuc-ip>:5555
 ```
 
-Open `http://localhost:8080` in your browser.
+The dashboard is at **`http://<nuc-ip>:5555`**.
+The optional container status API is at `http://<nuc-ip>:5000/api/status`.
 
----
+#### Changing the port
 
-## Docker Compose (recommended for NUC)
+Edit `docker-compose.yml` before running `docker compose up`:
 
-Runs the static dashboard **and** the container status API together:
+```yaml
+services:
+  frontend:
+    ports:
+      - "8080:80"   # change 8080 to any port you like
+```
+
+Then restart:
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+### Option B — Python (no Docker)
 
 ```bash
 git clone https://github.com/Mr-Vale/QLS.git
 cd QLS
-docker compose up -d
+python3 -m http.server 5555
+# Open http://localhost:5555
 ```
 
-The dashboard is available at `http://<nuc-ip>:8080`.
+To use a different port, replace `5555` with your preferred port number.
 
-Container status is served at `http://<nuc-ip>:5000/api/status`.
+### Option C — Node.js
 
-### Status API environment variables
+```bash
+git clone https://github.com/Mr-Vale/QLS.git
+cd QLS
+npx serve -l 5555 .
+# Open http://localhost:5555
+```
 
-| Variable     | Default | Description |
-|---|---|---|
-| `PORT`       | `5000`  | Port for the Flask status API |
-| `CONTAINERS` | *(all)* | Comma-separated list of container names to watch; leave empty for all |
+### Option D — Nginx / Caddy
+
+Point the document root at the `QLS/` directory and set the listening port to **5555** (or any port). The `nginx.conf` in this repo is pre-configured for use with Docker Compose.
 
 ---
 
-## Configuration
+## Adding and Managing Tiles
 
-### First-time defaults — `config.json`
+### Add a tile
 
-On the **first visit** (no `localStorage` data), `config.json` is loaded to pre-populate tiles and settings. Edit this file to set your default tiles:
+1. Click **＋** in the top-right corner, or press **Ctrl / Cmd + K**.
+2. Fill in the form:
+   - **Label** — display name shown on the tile
+   - **URL** — the address the tile links to (e.g. `http://192.168.1.10:9000`)
+   - **Category** — optional group header (e.g. *Monitoring*, *Media*)
+   - **Description** — short subtitle shown under the label
+   - **Icon** — choose from three tabs:
+     - *Emoji / URL* — type an emoji (`🐳`) or paste an image URL
+     - *Simple Icons* — search by service name; icons are fetched from [cdn.simpleicons.org](https://cdn.simpleicons.org)
+     - *Upload* — upload a PNG, SVG, JPG, or GIF; stored in your browser
+3. Set **Tile display options** (see below).
+4. Click **Save Tile**.
+
+### Tile display options
+
+Each tile has individual toggles:
+
+| Toggle | Default | Effect |
+|---|---|---|
+| Show icon | ✅ | Display the icon image or emoji |
+| Show title | ✅ | Display the tile label |
+| Show description | ✅ | Display the description text |
+| Show status dot | ✅ | Show the reachability/status indicator |
+| Override: open in new tab | ☐ | Overrides the global new-tab setting for this tile only |
+
+### Edit or delete tiles
+
+1. Click **✏️** (Edit mode) in the header.
+2. Hover any tile — action buttons appear:
+   - ✏ **Edit** — reopen the editor dialog
+   - ↑ / ↓ — reorder within the list
+   - ✕ — delete with confirmation
+3. Drag and drop tiles to rearrange them.
+4. Click **✏️** again to exit edit mode (buttons disappear).
+
+---
+
+## Status Indicators
+
+### Reachability (built-in, no backend)
+
+QLS can ping each tile's URL directly from the browser:
+
+1. Open **Settings** (⚙️).
+2. Under **Reachability Status**, enable the toggle.
+3. Set the **Poll interval** (seconds).
+
+Each tile gets a coloured dot:
+
+| Colour | Meaning |
+|---|---|
+| 🟢 Green | Host responded — service is up |
+| 🔴 Red | Network error — host is unreachable |
+| ⚪ Grey | Unknown / status disabled |
+| 🟡 Yellow (pulse) | Currently checking |
+
+> **Note:** The browser uses `no-cors` mode for cross-origin requests, so the status dot shows whether the host is network-reachable, not the HTTP status code. Services that return 404 but are still up may show as green. This is the expected behaviour for a lightweight homelab check.
+
+### Docker container status (optional backend)
+
+For per-container up/down from Docker's API, run the included Python/Flask sidecar:
+
+```bash
+docker compose up -d   # starts both frontend + status-api
+```
+
+Then in **Settings → Container Status API**:
+
+- Enable the toggle
+- Set **API URL** to `/api/status`
+- Set each tile's **Container name** to the Docker container name
+
+#### Status API environment variables
+
+| Variable     | Default | Description |
+|---|---|---|
+| `PORT`       | `5000`  | Port for the Flask API |
+| `CONTAINERS` | *(all)* | Comma-separated container names to watch; empty = all |
+
+---
+
+## Settings
+
+Open via the **⚙️** button in the header.
+
+### Appearance
+
+| Setting | Description |
+|---|---|
+| Site title | Header logo text |
+| Subtitle | Header subtitle text |
+| Background image | Upload a PNG/JPG/etc. — stored in browser; displays behind the tile grid |
+| Tile transparency | Slider 10 %–100 %; lower = more transparent tiles, more background visible |
+
+### Links
+
+| Setting | Description |
+|---|---|
+| Open in new tab | Global default — checked = all tiles open in a new tab; unchecked = same tab |
+
+Per-tile override: enable **Override: open in new tab** in the tile editor to set a different behaviour for an individual tile.
+
+### Reachability Status
+
+| Setting | Description |
+|---|---|
+| Enable reachability | Toggle polling of each tile's URL |
+| Poll interval (s) | How often to re-check (default 30 s) |
+
+### Container Status API (optional)
+
+| Setting | Description |
+|---|---|
+| Enable API status | Poll the Docker status endpoint |
+| API URL | Endpoint (default `/api/status`) |
+| Poll interval (s) | Refresh frequency |
+
+### Data
+
+| Button | Action |
+|---|---|
+| Export config | Downloads `qls-config.json` with all tiles and settings |
+| Import config | Load a previously exported JSON to restore tiles and settings |
+| Reset to defaults | Clears `localStorage` and reloads `config.json` |
+
+---
+
+## Custom Background Image
+
+1. Open **Settings** → **Appearance**.
+2. Click **📁 Upload** next to *Background image* and pick any image file.
+3. The image is stored in your browser and applied immediately.
+4. Use the **Tile transparency** slider to make tiles more or less opaque over the background.
+5. To remove the background, click **✕ Remove** that appears after uploading.
+
+---
+
+## Using Simple Icons
+
+When adding or editing a tile:
+
+1. Under **Icon**, click the **Simple Icons** tab.
+2. Type a service name (e.g. `portainer`, `grafana`, `nextcloud`, `jellyfin`).
+3. Click **Search** (or press Enter).
+4. Click any matching icon to select it — the tile preview updates immediately.
+5. If no icon is found, switch to the **Upload** tab to upload your own.
+
+Icons are fetched from [cdn.simpleicons.org](https://cdn.simpleicons.org) — requires internet access on the browser.
+
+---
+
+## Configuration File (`config.json`)
+
+On first visit (no `localStorage` data), QLS reads `config.json` to pre-populate tiles:
 
 ```json
 {
@@ -71,7 +260,7 @@ On the **first visit** (no `localStorage` data), `config.json` is loaded to pre-
     "subtitle": "Quick Links & Status"
   },
   "status": {
-    "enabled": true,
+    "enabled": false,
     "apiUrl": "/api/status",
     "pollIntervalSeconds": 30
   },
@@ -82,96 +271,34 @@ On the **first visit** (no `localStorage` data), `config.json` is loaded to pre-
       "url": "http://nuc:9000",
       "icon": "🐳",
       "description": "Container management",
-      "category": "Infrastructure",
-      "container": "portainer"
+      "category": "Infrastructure"
     }
   ]
 }
 ```
 
-**Tip:** After customising through the UI, use **Settings → Export config** to download the current state as `config.json` and commit it. This way the dashboard self-seeds on a fresh install.
+**Tip:** After customising through the UI, use **Settings → Export config** to download the current state and save it as `config.json`. Future fresh installs will start with your tile set.
 
 ---
 
-## Adding / managing tiles
-
-1. Click **＋** (top-right) or press **Ctrl+K** to open the *Add Tile* dialog.
-2. Fill in:
-   - **Label** — display name
-   - **URL** — where the tile links to
-   - **Icon** — an emoji (`🐳`) or a full image URL (`https://…/logo.png`)
-   - **Description** — short subtitle shown on the tile
-   - **Category** — optional group header (e.g. *Monitoring*)
-   - **Container name** — Docker container name for the status dot
-3. Click **Save Tile**.
-
-### Editing / removing tiles
-
-Click the **✏️ Edit mode** button (or hover a tile and use the action buttons that appear).
-
-- ✏ **Edit** — reopen the dialog
-- ↑ / ↓ **Move** — reorder within the list
-- ✕ **Remove** — delete with confirmation
-
-### Drag-and-drop reorder
-
-Enable edit mode, then drag any tile to its new position.
-
----
-
-## Status indicator
-
-Each tile can show a small coloured dot:
-
-| Colour | Meaning |
-|---|---|
-| 🟢 Green | Container is `running` |
-| 🔴 Red   | Container exists but is stopped |
-| ⚪ Grey  | Status unknown / not configured |
-| 🟡 Yellow (pulsing) | Polling in progress |
-
-Configure the status API in **Settings → Container Status**:
-
-- **Enable status** — toggle polling on/off
-- **API URL** — default `/api/status` (proxied by nginx to `status-api:5000`)
-- **Poll interval** — how often to refresh (seconds)
-
----
-
-## Settings panel
-
-Open via the **⚙️** button:
-
-| Option | Description |
-|---|---|
-| Site title / subtitle | Customise the header text |
-| Enable status | Toggle container polling |
-| API URL | Status endpoint URL |
-| Poll interval | Refresh frequency in seconds |
-| Export config | Download tiles + settings as JSON |
-| Import config | Load a previously exported JSON |
-| Reset to defaults | Clear localStorage and reload `config.json` |
-
----
-
-## Project structure
+## Project Structure
 
 ```
 QLS/
 ├── index.html          # Dashboard UI
-├── style.css           # Dark theme styles
-├── app.js              # Tile management + status polling
-├── config.json         # Default tile/settings seed
-├── status.py           # Docker status API (Flask)
+├── style.css           # Dark theme + responsive layout
+├── app.js              # Tile management, icons, reachability, settings
+├── config.json         # Default tile/settings seed (first-visit only)
+├── status.py           # Optional Docker status API (Flask)
 ├── Dockerfile.status   # Container for status API
-├── docker-compose.yml  # Full-stack deployment
+├── docker-compose.yml  # Full-stack deployment (port 5555)
 ├── nginx.conf          # Nginx config with /api/ proxy
 └── README.md
 ```
 
 ---
 
-## Keyboard shortcuts
+## Keyboard Shortcuts
 
 | Shortcut     | Action          |
 |---|---|
@@ -180,11 +307,14 @@ QLS/
 
 ---
 
-## Deployment tips for a NUC
+## Deployment Tips for a NUC
 
-- Put QLS behind a reverse proxy (Traefik, Caddy, nginx) if you have other services on port 80/443.
-- The `docker.sock` mount on `status-api` gives it read-only access to list containers — no write access.
-- Tiles are persisted in the **browser's** `localStorage`. To share the same tile list across devices, export the config and commit `config.json` to the repo, or serve it from a shared location.
+- The default port is **5555**. Change it in `docker-compose.yml` if needed.
+- To share tiles across multiple browsers or devices, use **Export config**, commit `config.json`, and redeploy. Every new browser session will load the same starting tiles.
+- The `docker.sock` mount on `status-api` is read-only — no write access to Docker.
+- Tiles, settings, and uploaded icons are stored in the **browser's `localStorage`**. Clearing browser data will reset to `config.json` defaults.
+- Large background images are stored as data URLs in `localStorage` — prefer images under ~2 MB to avoid storage limits.
+- Put QLS behind a reverse proxy (Traefik, Caddy, nginx) if you want HTTPS or a cleaner URL.
 
 ---
 

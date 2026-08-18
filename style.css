@@ -21,6 +21,7 @@
   --radius-sm: 8px;
   --transition: 0.18s ease;
   --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --tile-opacity: 0.9;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -30,6 +31,9 @@ html { scroll-behavior: smooth; }
 body {
   font-family: var(--font);
   background: var(--bg);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
   color: var(--text);
   min-height: 100vh;
   line-height: 1.5;
@@ -175,7 +179,7 @@ body {
 
 /* ---- Tile ---- */
 .tile {
-  background: var(--surface);
+  background: rgba(26, 29, 39, var(--tile-opacity));
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 18px 16px 14px;
@@ -189,10 +193,19 @@ body {
   transition: background var(--transition), border-color var(--transition), transform var(--transition), box-shadow var(--transition);
   user-select: none;
   outline: none;
+  /* Fallback for browsers without rgba var support */
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+/* When a background image is set, tiles get a subtle blur */
+body.has-bg .tile {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 
 .tile:hover, .tile:focus-visible {
-  background: var(--surface-hover);
+  background: rgba(34, 38, 58, var(--tile-opacity));
   border-color: rgba(108, 99, 255, 0.5);
   transform: translateY(-2px);
   box-shadow: var(--shadow);
@@ -265,7 +278,7 @@ body {
   50% { opacity: 0.4; }
 }
 
-/* Tile action buttons (shown on hover) */
+/* Tile action buttons — hidden unless in edit mode */
 .tile-actions {
   position: absolute;
   top: 6px;
@@ -277,11 +290,34 @@ body {
   transition: opacity var(--transition);
 }
 
-.tile:hover .tile-actions,
-.tile:focus-within .tile-actions {
+/* Drag handle hidden outside edit mode */
+.drag-handle {
+  cursor: grab;
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  visibility: hidden;
+}
+
+body.edit-mode .drag-handle {
+  visibility: visible;
+}
+
+body.edit-mode .tile { border-color: rgba(108, 99, 255, 0.3); }
+
+body.edit-mode .tile:hover .tile-actions,
+body.edit-mode .tile:focus-within .tile-actions {
   opacity: 1;
   pointer-events: auto;
 }
+
+/* Always show in edit mode (without hover) */
+body.edit-mode .tile-actions {
+  opacity: 0.7;
+  pointer-events: auto;
+}
+body.edit-mode .tile:hover .tile-actions { opacity: 1; }
+
+.drag-handle:active { cursor: grabbing; }
 
 .tile-action-btn {
   background: rgba(15, 17, 23, 0.85);
@@ -300,18 +336,6 @@ body {
 }
 .tile-action-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 .tile-action-btn.delete:hover { background: var(--red); border-color: var(--red); }
-
-/* Drag handle */
-.drag-handle {
-  cursor: grab;
-  color: var(--text-faint);
-  font-size: 0.8rem;
-}
-.drag-handle:active { cursor: grabbing; }
-
-/* ---- Edit mode ---- */
-body.edit-mode .tile { border-color: rgba(108, 99, 255, 0.3); }
-body.edit-mode .tile-actions { opacity: 1; pointer-events: auto; }
 
 /* ---- Empty state ---- */
 .empty-state {
@@ -357,6 +381,9 @@ body.edit-mode .tile-actions { opacity: 1; pointer-events: auto; }
   transform: translateY(12px);
   transition: transform 0.2s ease;
 }
+
+.modal-wide { max-width: 540px; }
+
 .modal-overlay.open .modal { transform: translateY(0); }
 
 .modal-header {
@@ -458,6 +485,94 @@ body.edit-mode .tile-actions { opacity: 1; pointer-events: auto; }
   object-fit: contain;
 }
 
+/* ---- Icon tabs ---- */
+.icon-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.icon-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+  font-family: var(--font);
+}
+
+.icon-tab:hover { color: var(--text); background: var(--surface-hover); }
+.icon-tab.active { color: var(--text); background: var(--surface-hover); border-color: var(--accent); }
+
+.icon-tab-panel { display: none; }
+.icon-tab-panel.active { display: block; }
+
+/* ---- Simple Icons search ---- */
+.si-search-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.si-search-row .form-input { flex: 1; }
+
+.si-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 40px;
+  margin-top: 4px;
+}
+
+.si-result-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+  min-width: 56px;
+  color: var(--text);
+  font-family: var(--font);
+}
+
+.si-result-btn:hover { border-color: var(--accent); background: var(--surface-hover); }
+.si-result-btn.selected { border-color: var(--accent); background: rgba(108, 99, 255, 0.12); }
+.si-result-btn img { filter: invert(1); }
+
+/* ---- Tile visibility toggles ---- */
+.tile-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tile-toggle-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tile-toggle-item input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
 /* ---- Confirm dialog ---- */
 .confirm-msg {
   font-size: 0.9rem;
@@ -516,7 +631,7 @@ body.edit-mode .tile-actions { opacity: 1; pointer-events: auto; }
   top: 0;
   right: 0;
   height: 100%;
-  width: 320px;
+  width: 340px;
   max-width: 100vw;
   background: var(--surface);
   border-left: 1px solid var(--border);
@@ -554,8 +669,9 @@ body.edit-mode .tile-actions { opacity: 1; pointer-events: auto; }
   justify-content: space-between;
   padding: 10px 0;
   border-bottom: 1px solid rgba(42, 45, 62, 0.5);
+  gap: 10px;
 }
-.setting-info { flex: 1; }
+.setting-info { flex: 1; min-width: 0; }
 .setting-name { font-size: 0.85rem; font-weight: 500; }
 .setting-desc { font-size: 0.74rem; color: var(--text-muted); margin-top: 2px; }
 
@@ -589,6 +705,40 @@ body.edit-mode .tile-actions { opacity: 1; pointer-events: auto; }
 }
 .toggle input:checked + .toggle-track::after { transform: translateX(18px); }
 
+/* Upload label button */
+.upload-label {
+  display: inline-flex;
+  cursor: pointer;
+}
+
+/* Range input styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--surface);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--surface);
+}
+
 /* ---- Status bar ---- */
 .status-bar {
   display: flex;
@@ -620,4 +770,5 @@ body.edit-mode .tile-actions { opacity: 1; pointer-events: auto; }
   .main { padding: 20px 14px 48px; }
   .modal { padding: 22px 16px 18px; }
   .form-row { grid-template-columns: 1fr; }
+  .icon-tabs { flex-wrap: wrap; }
 }
