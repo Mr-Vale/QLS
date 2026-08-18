@@ -446,7 +446,9 @@ function openEditModal(id) {
   fLabel.value     = tile.label || '';
   fUrl.value       = tile.url || '';
   fDesc.value      = tile.description || '';
-  fIcon.value      = (!tile.icon || tile.icon.startsWith('data:') || isUrl(tile.icon)) ? (tile.icon || '') : tile.icon;
+  // Only populate the text input if the icon is an emoji/text (not a URL or data URL)
+  const isIconUrl = tile.icon && (tile.icon.startsWith('data:') || isUrl(tile.icon));
+  fIcon.value      = isIconUrl ? '' : (tile.icon || '');
   fCategory.value  = tile.category || '';
   fContainer.value = tile.container || '';
   fShowIcon.checked   = tile.showIcon   !== false;
@@ -573,7 +575,7 @@ function searchSimpleIcons() {
   resultsEl.innerHTML = '';
   let found = 0;
 
-  candidates.forEach(({ slug, url }) => {
+  candidates.forEach(({ slug, url }, i) => {
     const img = document.createElement('img');
     img.src = url;
     img.alt = slug;
@@ -607,7 +609,7 @@ function searchSimpleIcons() {
     };
 
     img.onerror = () => {
-      if (found === 0 && candidates.indexOf({ slug, url }) === candidates.length - 1) {
+      if (found === 0 && i === candidates.length - 1) {
         resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">No icon found — try uploading a custom image.</span>';
       }
     };
@@ -772,9 +774,11 @@ function applyUISettings() {
   document.getElementById('site-title').innerHTML = `${escHtml(state.settings.title)} <span>&middot;</span>`;
   document.getElementById('site-subtitle').textContent = state.settings.subtitle;
 
-  // Background image
-  if (state.settings.backgroundImage) {
-    document.body.style.backgroundImage = `url("${state.settings.backgroundImage}")`;
+  // Background image — only apply if it is a valid data:image URL to prevent CSS injection
+  const bg = state.settings.backgroundImage;
+  if (bg && /^data:image\/[a-z+]+;base64,/.test(bg)) {
+    // Escape double-quotes to prevent breaking out of the CSS url("…") context
+    document.body.style.backgroundImage = `url("${bg.replace(/"/g, '%22')}")`;
     document.body.classList.add('has-bg');
   } else {
     document.body.style.backgroundImage = '';
@@ -891,8 +895,7 @@ async function checkTileReachability(tile) {
     // Use no-cors so CORS doesn't block homelab services.
     // An opaque (non-error) response means the host is reachable.
     // Network errors mean the host is down.
-    const resp = await fetch(tile.url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(5000) });
-    // With no-cors, resp.type === 'opaque' and status === 0 — this means reachable
+    await fetch(tile.url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(5000) });
     result = 'up';
   } catch (err) {
     result = 'down';
