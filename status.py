@@ -28,6 +28,11 @@ except ImportError:
 app = Flask(__name__)
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def get_status() -> dict:
     if not DOCKER_AVAILABLE:
         return {"error": "docker SDK not installed (pip install docker)"}
@@ -35,7 +40,8 @@ def get_status() -> dict:
     try:
         client = docker.from_env()
     except Exception as exc:
-        return {"error": str(exc)}
+        logger.error("Docker client error: %s", exc)
+        return {"error": "Could not connect to Docker"}
 
     filter_names = [
         n.strip()
@@ -52,14 +58,20 @@ def get_status() -> dict:
                 continue
             result[name] = "up" if c.status == "running" else "down"
     except Exception as exc:
-        return {"error": str(exc)}
+        logger.error("Error listing containers: %s", exc)
+        return {"error": "Failed to list containers"}
 
     return result
 
 
 @app.after_request
 def add_cors(response: Response) -> Response:
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    # Restrict the allowed origin in production; defaults to same-host only.
+    # Set the CORS_ORIGIN env var to allow the dashboard origin explicitly,
+    # e.g. CORS_ORIGIN=http://192.168.1.10:8080
+    origin = os.environ.get("CORS_ORIGIN", "")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
     return response
 
 

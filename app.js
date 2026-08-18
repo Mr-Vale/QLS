@@ -57,6 +57,16 @@ function isUrl(str) {
   return /^https?:\/\//i.test(str);
 }
 
+/** Return the input URL if it uses http or https, otherwise '#' */
+function safeUrl(str) {
+  try {
+    const parsed = new URL(str);
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? str : '#';
+  } catch (_) {
+    return '#';
+  }
+}
+
 /* ============================================================
    Toast notifications
    ============================================================ */
@@ -134,7 +144,7 @@ function renderTiles() {
 function buildTileEl(tile) {
   const a = document.createElement('a');
   a.className = 'tile';
-  a.href = tile.url || '#';
+  a.href = safeUrl(tile.url || '#');
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
   a.dataset.id = tile.id;
@@ -147,7 +157,7 @@ function buildTileEl(tile) {
   iconEl.className = 'tile-icon';
   if (tile.icon && isUrl(tile.icon)) {
     const img = document.createElement('img');
-    img.src = tile.icon;
+    img.src = safeUrl(tile.icon);
     img.alt = tile.label;
     img.loading = 'lazy';
     iconEl.appendChild(img);
@@ -171,10 +181,12 @@ function buildTileEl(tile) {
 
   const statusDot = document.createElement('div');
   statusDot.className = 'status-dot';
-  const statusKey = tile.container || tile.id;
-  setStatusDotClass(statusDot, state.status[statusKey]);
-  statusDot.title = tile.container ? `${tile.container}: ${state.status[statusKey] || 'unknown'}` : 'No container linked';
-  if (!tile.container) statusDot.style.visibility = 'hidden';
+  if (tile.container) {
+    setStatusDotClass(statusDot, state.status[tile.container]);
+    statusDot.title = `${tile.container}: ${state.status[tile.container] || 'unknown'}`;
+  } else {
+    statusDot.style.visibility = 'hidden';
+  }
 
   const dragHandle = document.createElement('span');
   dragHandle.className = 'drag-handle';
@@ -372,11 +384,13 @@ function closeModal(overlay) {
 fIcon.addEventListener('input', () => updateIconPreview(fIcon.value.trim()));
 
 function updateIconPreview(value) {
-  iconPreviewBox.innerHTML = '';
+  iconPreviewBox.textContent = '';
   if (!value) { iconPreviewBox.textContent = '🔗'; return; }
   if (isUrl(value)) {
+    const safe = safeUrl(value);
+    if (safe === '#') { iconPreviewBox.textContent = '🔗'; return; }
     const img = document.createElement('img');
-    img.src = value;
+    img.setAttribute('src', safe);
     img.alt = 'icon';
     img.onerror = () => { iconPreviewBox.textContent = '🔗'; };
     iconPreviewBox.appendChild(img);
@@ -524,7 +538,7 @@ function applySettings() {
 
 function applyUISettings() {
   document.title = `${state.settings.title} — HomeLab Dashboard`;
-  document.getElementById('site-title').innerHTML = `${escHtml(state.settings.title)} <span>·</span>`;
+  document.getElementById('site-title').innerHTML = `${escHtml(state.settings.title)} <span>&middot;</span>`;
   document.getElementById('site-subtitle').textContent = state.settings.subtitle;
 }
 
@@ -620,9 +634,9 @@ function updateStatusDots() {
     if (!tile) return;
     const dot = tileEl.querySelector('.status-dot');
     if (!dot) return;
-    const key = tile.container || tile.id;
-    setStatusDotClass(dot, state.status[key]);
-    dot.title = tile.container ? `${tile.container}: ${state.status[key] || 'unknown'}` : '';
+    if (!tile.container) return;
+    setStatusDotClass(dot, state.status[tile.container]);
+    dot.title = `${tile.container}: ${state.status[tile.container] || 'unknown'}`;
   });
 }
 

@@ -29,3 +29,8 @@ services:
       # Optionally restrict to specific containers (comma-separated)
       CONTAINERS: ""
       PORT: "5000"
+      # Set CORS_ORIGIN to the dashboard URL to restrict cross-origin access,
+      # e.g. http://192.168.1.10:8080
+      # When running behind nginx (recommended), CORS is not needed because
+      # the browser hits /api/status on the same origin as the dashboard.
+      CORS_ORIGIN: ""
