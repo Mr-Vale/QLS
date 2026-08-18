@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QLS — HomeLab Dashboard</title>
+  <meta name="description" content="Quick Links & Status — homelab dashboard" />
+  <meta name="theme-color" content="#0f1117" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo" id="site-title">QLS <span>·</span></div>
+      <div class="subtitle" id="site-subtitle">Quick Links &amp; Status</div>
+    </div>
+    <div class="header-right">
+      <div class="status-bar" id="status-bar" title="Container status API">
+        <div class="status-bar-dot" id="status-bar-dot"></div>
+        <span id="status-bar-text">Status off</span>
+      </div>
+      <button class="btn btn-primary btn-icon" id="btn-add" title="Add tile" aria-label="Add tile">＋</button>
+      <button class="btn btn-ghost btn-icon" id="btn-edit-mode" title="Toggle edit mode" aria-label="Toggle edit mode">✏️</button>
+      <button class="btn btn-ghost btn-icon" id="btn-settings" title="Settings" aria-label="Open settings">⚙️</button>
+    </div>
+  </header>
+
+  <!-- ===== MAIN ===== -->
+  <main class="main" id="main">
+    <!-- Tile categories rendered by JS -->
+  </main>
+
+  <!-- ===== TOAST CONTAINER ===== -->
+  <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+  <!-- ===== ADD / EDIT TILE MODAL ===== -->
+  <div class="modal-overlay" id="tile-modal" role="dialog" aria-modal="true" aria-labelledby="tile-modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="tile-modal-title">Add Tile</h2>
+        <button class="modal-close" id="tile-modal-close" aria-label="Close">✕</button>
+      </div>
+      <form id="tile-form" novalidate>
+        <input type="hidden" id="edit-id" />
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="f-label">Label <sup>*</sup></label>
+            <input class="form-input" id="f-label" type="text" placeholder="Portainer" required maxlength="40" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="f-category">Category</label>
+            <input class="form-input" id="f-category" type="text" placeholder="Infrastructure" maxlength="40" list="category-list" />
+            <datalist id="category-list"></datalist>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="f-url">URL <sup>*</sup></label>
+          <input class="form-input" id="f-url" type="url" placeholder="http://localhost:9000" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="f-desc">Description</label>
+          <input class="form-input" id="f-desc" type="text" placeholder="Container management" maxlength="80" />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="f-icon">Icon (emoji or URL)</label>
+            <input class="form-input" id="f-icon" type="text" placeholder="🐳 or https://…/logo.png" />
+            <p class="form-hint">Emoji, or paste an image URL</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="f-container">Container name</label>
+            <input class="form-input" id="f-container" type="text" placeholder="portainer" maxlength="80" />
+            <p class="form-hint">For status indicator</p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="icon-preview">
+            <div class="icon-preview-box" id="icon-preview-box">🔗</div>
+            <span style="font-size:0.78rem;color:var(--text-muted);">Preview</span>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="tile-form-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="tile-form-submit">Save Tile</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== CONFIRM DELETE MODAL ===== -->
+  <div class="modal-overlay" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="confirm-modal-title">Remove Tile</h2>
+        <button class="modal-close" id="confirm-modal-close" aria-label="Close">✕</button>
+      </div>
+      <p class="confirm-msg" id="confirm-msg">Are you sure you want to remove this tile?</p>
+      <div class="form-actions">
+        <button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+        <button class="btn btn-danger" id="confirm-ok">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SETTINGS PANEL ===== -->
+  <div class="settings-overlay" id="settings-overlay"></div>
+  <aside class="settings-panel" id="settings-panel" role="complementary" aria-label="Settings">
+    <div class="settings-header">
+      <h2 class="settings-title">Settings</h2>
+      <button class="modal-close" id="settings-close" aria-label="Close settings">✕</button>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-label">Appearance</div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Site title</div>
+        </div>
+        <input class="form-input" id="s-title" type="text" placeholder="HomeLab" style="width:130px;" maxlength="40" />
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Subtitle</div>
+        </div>
+        <input class="form-input" id="s-subtitle" type="text" placeholder="Quick Links &amp; Status" style="width:130px;" maxlength="60" />
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-label">Container Status</div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Enable status</div>
+          <div class="setting-desc">Poll /api/status for container states</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="s-status-enabled" />
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">API URL</div>
+        </div>
+        <input class="form-input" id="s-status-url" type="text" placeholder="/api/status" style="width:130px;" />
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Poll interval (s)</div>
+        </div>
+        <input class="form-input" id="s-poll-interval" type="number" min="5" max="300" style="width:80px;" />
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-label">Data</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px;">
+        <button class="btn btn-ghost" id="s-export">⬇ Export config (JSON)</button>
+        <label class="btn btn-ghost" style="cursor:pointer;">
+          ⬆ Import config (JSON)
+          <input type="file" id="s-import-file" accept=".json" style="display:none;" />
+        </label>
+        <button class="btn btn-danger" id="s-reset">↺ Reset to defaults</button>
+      </div>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
