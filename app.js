@@ -10,7 +10,7 @@
    ============================================================ */
 const STORAGE_TILES    = 'qls_tiles';
 const STORAGE_SETTINGS = 'qls_settings';
-const CONFIG_URL       = 'config.json';
+const CONFIG_URL       = '/api/config';
 
 /* ============================================================
    State
@@ -59,6 +59,19 @@ function saveState() {
       localStorage.removeItem('qls_bg');
     }
   } catch (_) { /* storage unavailable */ }
+
+  // Persist to server (best-effort, non-blocking)
+  saveStateToServer();
+}
+
+function saveStateToServer() {
+  const { backgroundImage, ...settingsWithoutBg } = state.settings;
+  const payload = { settings: settingsWithoutBg, tiles: state.tiles };
+  fetch(CONFIG_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => { /* server save failed — local save still valid */ });
 }
 
 function loadState() {
@@ -890,7 +903,8 @@ document.getElementById('s-reset').addEventListener('click', () => {
     statusApiUrl: '/api/status',
     pollIntervalSeconds: 30,
   };
-  loadDefaults().then(() => {
+  loadServerConfig().then(ok => {
+    if (!ok) loadState();
     syncSettingsUI();
     applyUISettings();
     renderTiles();
@@ -1012,26 +1026,35 @@ function restartStatusPolling() {
 }
 
 /* ============================================================
-   Load defaults from config.json (first visit)
+   Load shared config from server (GET /api/config)
+   Falls back to localStorage if server is unavailable.
    ============================================================ */
-async function loadDefaults() {
+async function loadServerConfig() {
   try {
     const resp = await fetch(CONFIG_URL, { cache: 'no-cache' });
-    if (!resp.ok) return;
+    if (!resp.ok) return false;
     const cfg = await resp.json();
-    if (cfg.site) {
-      if (cfg.site.title)    state.settings.title    = cfg.site.title;
-      if (cfg.site.subtitle) state.settings.subtitle = cfg.site.subtitle;
-    }
-    if (cfg.status) {
-      if (cfg.status.enabled !== undefined)      state.settings.statusEnabled       = cfg.status.enabled;
-      if (cfg.status.apiUrl)                     state.settings.statusApiUrl        = cfg.status.apiUrl;
-      if (cfg.status.pollIntervalSeconds)        state.settings.pollIntervalSeconds = cfg.status.pollIntervalSeconds;
+    if (cfg.settings) {
+      state.settings = { ...state.settings, ...cfg.settings };
+    } else {
+      // Legacy config.json format (site/status/tiles keys)
+      if (cfg.site) {
+        if (cfg.site.title)    state.settings.title    = cfg.site.title;
+        if (cfg.site.subtitle) state.settings.subtitle = cfg.site.subtitle;
+      }
+      if (cfg.status) {
+        if (cfg.status.enabled !== undefined)  state.settings.statusEnabled       = cfg.status.enabled;
+        if (cfg.status.apiUrl)                 state.settings.statusApiUrl        = cfg.status.apiUrl;
+        if (cfg.status.pollIntervalSeconds)    state.settings.pollIntervalSeconds = cfg.status.pollIntervalSeconds;
+      }
     }
     if (Array.isArray(cfg.tiles)) {
       state.tiles = cfg.tiles.map(t => ({ id: t.id || uid(), ...t }));
     }
-  } catch (_) { /* config.json not found — fine */ }
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 /* ============================================================
@@ -1053,10 +1076,10 @@ document.addEventListener('keydown', (e) => {
    Bootstrap
    ============================================================ */
 async function init() {
-  loadState();
-
-  if (state.tiles.length === 0) {
-    await loadDefaults();
+  // Try server config first (shared across devices); fall back to localStorage
+  const serverLoaded = await loadServerConfig();
+  if (!serverLoaded) {
+    loadState();
   }
 
   applyUISettings();

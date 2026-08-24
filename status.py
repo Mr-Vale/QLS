@@ -3,6 +3,8 @@
 QLS Status API — lightweight Flask server for Docker container status.
 
 Exposes GET /api/status  →  { "container_name": "up"|"down", … }
+Exposes GET /api/config  →  current config.json content
+Exposes POST /api/config →  overwrite config.json with request body
 
 Usage:
     pip install flask docker
@@ -12,11 +14,12 @@ Environment variables:
     PORT          (default 5000)
     CONTAINERS    comma-separated list of container names to watch;
                   leave empty to return all containers
+    CONFIG_PATH   path to config.json (default ./config.json)
 """
 
 import os
 import json
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask.wrappers import Response
 
 try:
@@ -26,6 +29,8 @@ except ImportError:
     DOCKER_AVAILABLE = False
 
 app = Flask(__name__)
+# Limit request body size to 5 MB to prevent oversized payloads from being written to disk.
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
 
 import logging
@@ -78,6 +83,39 @@ def add_cors(response: Response) -> Response:
 @app.route("/api/status")
 def status():
     return jsonify(get_status())
+
+
+CONFIG_PATH = os.environ.get("CONFIG_PATH", os.path.join(os.path.dirname(__file__), "config.json"))
+
+
+@app.route("/api/config", methods=["GET"])
+def get_config():
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return jsonify(data)
+    except FileNotFoundError:
+        return jsonify({}), 200
+    except Exception as exc:
+        logger.error("Error reading config: %s", exc)
+        return jsonify({"error": "Could not read config"}), 500
+
+
+@app.route("/api/config", methods=["POST"])
+def save_config():
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 400
+    try:
+        data = request.get_json(force=False, silent=False)
+    except Exception:
+        return jsonify({"error": "Invalid JSON"}), 400
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return jsonify({"ok": True})
+    except Exception as exc:
+        logger.error("Error writing config: %s", exc)
+        return jsonify({"error": "Could not write config"}), 500
 
 
 @app.route("/healthz")
