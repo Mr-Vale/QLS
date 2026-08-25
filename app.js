@@ -6,10 +6,8 @@
 'use strict';
 
 /* ============================================================
-   Constants & storage keys
+   Constants
    ============================================================ */
-const STORAGE_TILES    = 'qls_tiles';
-const STORAGE_SETTINGS = 'qls_settings';
 const CONFIG_URL       = '/api/config';
 const CONFIG_BG_URL    = '/api/config/background';
 
@@ -40,6 +38,10 @@ let state = {
   reachTimer: null,
   dragSrcId: null,
 };
+let serverAvailable = true;
+let serverUnavailableNotified = false;
+let serverReconnectTimer = null;
+let serverReconnectInFlight = false;
 
 /* ============================================================
    Utilities
@@ -48,21 +50,56 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-function saveState() {
-  try {
-    localStorage.setItem(STORAGE_TILES, JSON.stringify(state.tiles));
-    // Don't save backgroundImage in settings JSON export (too large) — save separately
-    const { backgroundImage, ...settingsWithoutBg } = state.settings;
-    localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(settingsWithoutBg));
-    if (state.settings.backgroundImage) {
-      localStorage.setItem('qls_bg', state.settings.backgroundImage);
-    } else {
-      localStorage.removeItem('qls_bg');
-    }
-  } catch (_) { /* storage unavailable */ }
+async function loadServerConfigWithRetry(maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const ok = await loadServerConfig();
+    if (ok) return true;
+    if (attempt < maxAttempts) await sleep(350 * attempt);
+  }
+  return false;
+}
 
+function startServerReconnectPolling() {
+  if (serverReconnectTimer) return;
+  serverReconnectTimer = setInterval(async () => {
+    if (serverReconnectInFlight || serverAvailable) return;
+    serverReconnectInFlight = true;
+    try {
+      const restored = await loadServerConfigWithRetry(1);
+      if (restored) {
+        serverAvailable = true;
+        serverUnavailableNotified = false;
+        setServerReadOnlyMode(false);
+        if (serverReconnectTimer) {
+          clearInterval(serverReconnectTimer);
+          serverReconnectTimer = null;
+        }
+        applyUISettings();
+        renderTiles();
+        restartStatusPolling();
+        restartReachabilityPolling();
+        showToast('Server connection restored.', 'success', 2600);
+      }
+    } finally {
+      serverReconnectInFlight = false;
+    }
+  }, 10000);
+}
+
+function saveState() {
+  if (!serverAvailable) {
+    notifyServerUnavailable();
+    return;
+  }
   // Persist to server (best-effort, non-blocking)
   saveStateToServer();
+}
+
+function notifyServerUnavailable() {
+  if (!serverUnavailableNotified) {
+    showToast('Server unavailable: changes are disabled until connection is restored.', 'error', 4200);
+    serverUnavailableNotified = true;
+  }
 }
 
 function saveStateToServer() {
@@ -72,7 +109,7 @@ function saveStateToServer() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  }).catch(() => { /* server save failed — local save still valid */ });
+  }).catch(() => { /* server save failed */ });
 
   // Save background image separately (may be large — stored as a sidecar file)
   if (backgroundImage) {
@@ -84,17 +121,6 @@ function saveStateToServer() {
   } else {
     fetch(CONFIG_BG_URL, { method: 'DELETE' }).catch(() => {});
   }
-}
-
-function loadState() {
-  try {
-    const rawTiles = localStorage.getItem(STORAGE_TILES);
-    if (rawTiles) state.tiles = JSON.parse(rawTiles);
-    const rawSettings = localStorage.getItem(STORAGE_SETTINGS);
-    if (rawSettings) state.settings = { ...state.settings, ...JSON.parse(rawSettings) };
-    const bg = localStorage.getItem('qls_bg');
-    if (bg) state.settings.backgroundImage = bg;
-  } catch (_) { /* ignore parse errors */ }
 }
 
 function isUrl(str) {
@@ -116,6 +142,10 @@ function escHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /* ============================================================
@@ -416,6 +446,7 @@ function moveTile(id, direction) {
    Icon tab switching
    ============================================================ */
 let selectedIconValue = ''; // the icon value chosen in the modal
+let existingIconValue = '';
 
 document.querySelectorAll('.icon-tab').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -436,7 +467,6 @@ const editIdInput     = document.getElementById('edit-id');
 const fLabel          = document.getElementById('f-label');
 const fUrl            = document.getElementById('f-url');
 const fDesc           = document.getElementById('f-desc');
-const fIcon           = document.getElementById('f-icon');
 const fCategory       = document.getElementById('f-category');
 const fContainer      = document.getElementById('f-container');
 const fShowIcon       = document.getElementById('f-show-icon');
@@ -449,12 +479,13 @@ const iconPreviewBox  = document.getElementById('icon-preview-box');
 function resetIconTabs() {
   document.querySelectorAll('.icon-tab').forEach((b, i) => b.classList.toggle('active', i === 0));
   document.querySelectorAll('.icon-tab-panel').forEach((p, i) => p.classList.toggle('active', i === 0));
-  document.getElementById('si-results').innerHTML = '';
-  document.getElementById('f-si-query').value = '';
+  document.getElementById('icon-results').innerHTML = '';
+  document.getElementById('f-icon-query').value = '';
   selectedIconValue = '';
 }
 
 function openAddModal() {
+  if (!serverAvailable) { notifyServerUnavailable(); return; }
   tileModalTitle.textContent = 'Add Tile';
   editIdInput.value = '';
   tileForm.reset();
@@ -463,6 +494,7 @@ function openAddModal() {
   fShowDesc.checked   = true;
   fShowStatus.checked = true;
   fNewTab.checked     = false;
+  existingIconValue   = '';
   resetIconTabs();
   updateIconPreview('🔗');
   openModal(tileModal);
@@ -470,6 +502,7 @@ function openAddModal() {
 }
 
 function openEditModal(id) {
+  if (!serverAvailable) { notifyServerUnavailable(); return; }
   const tile = state.tiles.find(t => t.id === id);
   if (!tile) return;
   tileModalTitle.textContent = 'Edit Tile';
@@ -477,9 +510,6 @@ function openEditModal(id) {
   fLabel.value     = tile.label || '';
   fUrl.value       = tile.url || '';
   fDesc.value      = tile.description || '';
-  // Only populate the text input if the icon is an emoji/text (not a URL or data URL)
-  const isIconUrl = tile.icon && (tile.icon.startsWith('data:') || isUrl(tile.icon));
-  fIcon.value      = isIconUrl ? '' : (tile.icon || '');
   fCategory.value  = tile.category || '';
   fContainer.value = tile.container || '';
   fShowIcon.checked   = tile.showIcon   !== false;
@@ -487,7 +517,8 @@ function openEditModal(id) {
   fShowDesc.checked   = tile.showDesc   !== false;
   fShowStatus.checked = tile.showStatus !== false;
   fNewTab.checked     = !!tile.newTab;
-  selectedIconValue   = tile.icon || '';
+  existingIconValue   = tile.icon || '';
+  selectedIconValue   = '';
   resetIconTabs();
   updateIconPreview(tile.icon);
   openModal(tileModal);
@@ -503,13 +534,6 @@ function closeModal(overlay) {
   overlay.classList.remove('open');
   document.body.style.overflow = '';
 }
-
-// Icon preview update (manual URL/emoji tab)
-fIcon.addEventListener('input', () => {
-  const val = fIcon.value.trim();
-  selectedIconValue = val;
-  updateIconPreview(val);
-});
 
 function updateIconPreview(value) {
   iconPreviewBox.textContent = '';
@@ -549,9 +573,8 @@ tileForm.addEventListener('submit', (e) => {
 
   const id = editIdInput.value || uid();
 
-  // Determine icon: use selectedIconValue (set by SI/upload/manual tab)
-  // Fall back to fIcon.value if selectedIconValue not set
-  const iconVal = selectedIconValue || fIcon.value.trim();
+  // Use selected icon from search/upload; preserve existing icon if unchanged while editing
+  const iconVal = selectedIconValue || existingIconValue || '';
 
   const tile = {
     id,
@@ -587,172 +610,141 @@ document.getElementById('tile-form-cancel').addEventListener('click', () => clos
 tileModal.addEventListener('click', (e) => { if (e.target === tileModal) closeModal(tileModal); });
 
 /* ============================================================
-   Simple Icons search
+   Unified icon search (Simple Icons + Homelab SVG)
    ============================================================ */
 const SI_CDN = 'https://cdn.simpleicons.org/';
+const HLSVG_CDN = 'https://raw.githubusercontent.com/loganmarchione/homelab-svg-assets/main/assets/';
+const ICON_PROBE_TIMEOUT_MS = 1200;
 
 function slugify(name) {
   return name.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
 }
 
-document.getElementById('btn-si-search').addEventListener('click', searchSimpleIcons);
-document.getElementById('f-si-query').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); searchSimpleIcons(); }
+document.getElementById('btn-icon-search').addEventListener('click', searchIcons);
+document.getElementById('f-icon-query').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); searchIcons(); }
 });
 
-function searchSimpleIcons() {
-  const query = document.getElementById('f-si-query').value.trim();
-  if (!query) return;
-  const resultsEl = document.getElementById('si-results');
-  resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">Searching…</span>';
+function buildIconCandidates(query) {
+  const normalized = query.toLowerCase().trim();
+  const variants = [...new Set([
+    slugify(normalized),
+    normalized.replace(/\s+/g, '-'),
+    normalized.replace(/\s+/g, '_'),
+    normalized.replace(/\s+/g, ''),
+    normalized,
+  ])].filter(Boolean);
 
-  // Try multiple slug variants
-  const slugs = [slugify(query), query.toLowerCase().replace(/\s+/g, '-'), query.toLowerCase()];
-  const unique = [...new Set(slugs)];
-
-  const candidates = unique.map(slug => ({
+  const simple = variants.map(slug => ({
+    source: 'Simple Icons',
     slug,
     url: `${SI_CDN}${encodeURIComponent(slug)}`,
   }));
 
-  resultsEl.innerHTML = '';
-  let found = 0;
-
-  candidates.forEach(({ slug, url }, i) => {
-    const img = document.createElement('img');
-    img.src = url;
-    img.alt = slug;
-    img.style.width = '32px';
-    img.style.height = '32px';
-    img.style.filter = 'invert(1)';
-    img.style.display = 'none';
-
-    img.onload = () => {
-      found++;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'si-result-btn';
-      btn.title = slug;
-      btn.appendChild(img.cloneNode());
-      btn.querySelector('img').style.display = '';
-      const label = document.createElement('span');
-      label.textContent = slug;
-      label.style.fontSize = '0.72rem';
-      label.style.color = 'var(--text-muted)';
-      btn.appendChild(label);
-      btn.addEventListener('click', () => {
-        selectedIconValue = url;
-        updateIconPreview(url);
-        showToast(`Simple Icons: ${slug}`, 'success', 1800);
-        // visually highlight selection
-        document.querySelectorAll('.si-result-btn').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-      });
-      resultsEl.appendChild(btn);
-    };
-
-    img.onerror = () => {
-      if (found === 0 && i === candidates.length - 1) {
-        resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">No icon found — try uploading a custom image.</span>';
-      }
-    };
-
-    // Need to actually attach img to check load
-    img.style.position = 'absolute';
-    img.style.visibility = 'hidden';
-    document.body.appendChild(img);
-    setTimeout(() => img.remove(), 5000);
-  });
-
-  // Show "not found" after a delay if nothing loaded
-  setTimeout(() => {
-    if (resultsEl.children.length === 0) {
-      resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">No icon found — try a different name or upload a custom image.</span>';
-    }
-  }, 3000);
-}
-
-/* ============================================================
-   Homelab SVG Assets search
-   ============================================================ */
-const HLSVG_CDN = 'https://raw.githubusercontent.com/loganmarchione/homelab-svg-assets/main/assets/';
-
-document.getElementById('btn-hlsvg-search').addEventListener('click', searchHomelabSvg);
-document.getElementById('f-hlsvg-query').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); searchHomelabSvg(); }
-});
-
-function searchHomelabSvg() {
-  const query = document.getElementById('f-hlsvg-query').value.trim();
-  if (!query) return;
-  const resultsEl = document.getElementById('hlsvg-results');
-  resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">Searching…</span>';
-
-  const slugs = [
-    query.toLowerCase().replace(/\s+/g, '-'),
-    query.toLowerCase().replace(/\s+/g, '_'),
-    slugify(query),
-    query.toLowerCase(),
-  ];
-  const unique = [...new Set(slugs)];
-
-  const candidates = unique.map(slug => ({
+  const homelab = variants.map(slug => ({
+    source: 'Homelab SVG',
     slug,
     url: `${HLSVG_CDN}${encodeURIComponent(slug)}.svg`,
   }));
 
-  resultsEl.innerHTML = '';
-  let found = 0;
+  return [...simple, ...homelab];
+}
 
-  candidates.forEach(({ slug, url }, i) => {
+function probeIcon(candidate) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    let settled = false;
+    const done = (ok) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok ? candidate : null);
+    };
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
+    img.src = candidate.url;
+    setTimeout(() => done(false), ICON_PROBE_TIMEOUT_MS);
+  });
+}
+
+function selectIconResult(url, source, slug, buttonEl = null) {
+  selectedIconValue = url;
+  updateIconPreview(url);
+  if (buttonEl) {
+    document.querySelectorAll('#icon-results .si-result-btn').forEach(b => b.classList.remove('selected'));
+    buttonEl.classList.add('selected');
+  }
+  showToast(`${source}: ${slug}`, 'success', 1800);
+}
+
+async function searchIcons() {
+  const query = document.getElementById('f-icon-query').value.trim();
+  if (!query) return;
+  const resultsEl = document.getElementById('icon-results');
+  resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">Searching…</span>';
+
+  const candidates = buildIconCandidates(query);
+  const hits = (await Promise.all(candidates.map(probeIcon))).filter(Boolean);
+  const seen = new Set();
+  const results = hits.filter(item => {
+    const key = `${item.source}|${item.url}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  resultsEl.innerHTML = '';
+  if (!results.length) {
+    resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">No icon found — upload a custom image.</span>';
+    return;
+  }
+
+  results.forEach(({ source, slug, url }) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'si-result-btn';
+    btn.title = `${source}: ${slug}`;
+
     const img = document.createElement('img');
     img.src = url;
     img.alt = slug;
     img.style.width = '32px';
     img.style.height = '32px';
-    img.style.filter = 'invert(1)';
-    img.style.display = 'none';
+    if (source === 'Simple Icons') img.classList.add('simpleicons-icon');
+    btn.appendChild(img);
 
-    img.onload = () => {
-      found++;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'si-result-btn';
-      btn.title = slug;
-      btn.appendChild(img.cloneNode());
-      btn.querySelector('img').style.display = '';
-      const label = document.createElement('span');
-      label.textContent = slug;
-      label.style.fontSize = '0.72rem';
-      label.style.color = 'var(--text-muted)';
-      btn.appendChild(label);
-      btn.addEventListener('click', () => {
-        selectedIconValue = url;
-        updateIconPreview(url);
-        showToast(`Homelab SVG: ${slug}`, 'success', 1800);
-        document.querySelectorAll('#hlsvg-results .si-result-btn').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-      });
-      resultsEl.appendChild(btn);
-    };
+    const label = document.createElement('span');
+    label.textContent = slug;
+    label.style.fontSize = '0.72rem';
+    label.style.color = 'var(--text-muted)';
+    btn.appendChild(label);
 
-    img.onerror = () => {
-      if (found === 0 && i === candidates.length - 1) {
-        resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">No icon found — try uploading a custom image.</span>';
-      }
-    };
+    const sourceLabel = document.createElement('span');
+    sourceLabel.className = 'si-result-source';
+    sourceLabel.textContent = source;
+    btn.appendChild(sourceLabel);
 
-    img.style.position = 'absolute';
-    img.style.visibility = 'hidden';
-    document.body.appendChild(img);
-    setTimeout(() => img.remove(), 5000);
+    btn.addEventListener('click', () => selectIconResult(url, source, slug, btn));
+    resultsEl.appendChild(btn);
   });
 
-  setTimeout(() => {
-    if (resultsEl.children.length === 0) {
-      resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">No icon found — try a different name or upload a custom image.</span>';
-    }
-  }, 3000);
+  const normalized = query.toLowerCase().trim();
+  const exactVariants = new Set([
+    slugify(normalized),
+    normalized.replace(/\s+/g, '-'),
+    normalized.replace(/\s+/g, '_'),
+    normalized.replace(/\s+/g, ''),
+    normalized,
+  ]);
+  const bestExact = results.find(r => exactVariants.has(r.slug));
+  if (bestExact) {
+    const bestBtn = [...resultsEl.querySelectorAll('.si-result-btn')]
+      .find(b => b.title === `${bestExact.source}: ${bestExact.slug}`);
+    selectIconResult(bestExact.url, bestExact.source, bestExact.slug, bestBtn || null);
+  } else if (results.length === 1) {
+    const only = results[0];
+    const onlyBtn = resultsEl.querySelector('.si-result-btn');
+    selectIconResult(only.url, only.source, only.slug, onlyBtn);
+  }
 }
 
 /* ============================================================
@@ -824,6 +816,18 @@ document.getElementById('btn-add').addEventListener('click', openAddModal);
    ============================================================ */
 const settingsPanel   = document.getElementById('settings-panel');
 const settingsOverlay = document.getElementById('settings-overlay');
+const addBtn = document.getElementById('btn-add');
+const editBtn = document.getElementById('btn-edit-mode');
+const settingsBtn = document.getElementById('btn-settings');
+
+function setServerReadOnlyMode(enabled) {
+  addBtn.disabled = enabled;
+  editBtn.disabled = enabled;
+  settingsBtn.disabled = enabled;
+  addBtn.title = enabled ? 'Unavailable while server is offline' : 'Add tile (Ctrl+K)';
+  editBtn.title = enabled ? 'Unavailable while server is offline' : 'Toggle edit mode';
+  settingsBtn.title = enabled ? 'Unavailable while server is offline' : 'Open settings';
+}
 
 function openSettings() {
   syncSettingsUI();
@@ -982,9 +986,6 @@ document.getElementById('s-import-file').addEventListener('change', (e) => {
 
 document.getElementById('s-reset').addEventListener('click', () => {
   if (!confirm('Reset all tiles and settings to defaults?')) return;
-  localStorage.removeItem(STORAGE_TILES);
-  localStorage.removeItem(STORAGE_SETTINGS);
-  localStorage.removeItem('qls_bg');
   const defaults = {
     title: 'QLS',
     subtitle: 'Quick Links & Status',
@@ -1122,7 +1123,7 @@ function restartStatusPolling() {
 
 /* ============================================================
    Load shared config from server (GET /api/config)
-   Falls back to localStorage if server is unavailable.
+   Server is the source of truth.
    ============================================================ */
 async function loadServerConfig() {
   try {
@@ -1183,10 +1184,13 @@ document.addEventListener('keydown', (e) => {
    Bootstrap
    ============================================================ */
 async function init() {
-  // Try server config first (shared across devices); fall back to localStorage
-  const serverLoaded = await loadServerConfig();
+  // Load shared server config first.
+  const serverLoaded = await loadServerConfigWithRetry();
+  serverAvailable = serverLoaded;
+  setServerReadOnlyMode(!serverLoaded);
   if (!serverLoaded) {
-    loadState();
+    showToast('Server config unavailable after retries. Dashboard is read-only.', 'error', 5200);
+    startServerReconnectPolling();
   }
 
   applyUISettings();

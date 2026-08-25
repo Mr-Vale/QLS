@@ -14,7 +14,7 @@
       "id": "portainer",
       "label": "Portainer",
       "url": "http://localhost:9000",
-      "icon": "🐳",
+      "icon": "https://cdn.simpleicons.org/portainer",
       "description": "Container management",
       "category": "Infrastructure",
       "container": "portainer"
@@ -23,7 +23,7 @@
       "id": "grafana",
       "label": "Grafana",
       "url": "http://localhost:3000",
-      "icon": "📊",
+      "icon": "https://cdn.simpleicons.org/grafana",
       "description": "Metrics & dashboards",
       "category": "Monitoring",
       "container": "grafana"
@@ -32,7 +32,7 @@
       "id": "prometheus",
       "label": "Prometheus",
       "url": "http://localhost:9090",
-      "icon": "🔥",
+      "icon": "https://cdn.simpleicons.org/prometheus",
       "description": "Metrics scraping",
       "category": "Monitoring",
       "container": "prometheus"
@@ -41,7 +41,7 @@
       "id": "pihole",
       "label": "Pi-hole",
       "url": "http://localhost:8080",
-      "icon": "🕳️",
+      "icon": "https://cdn.simpleicons.org/pihole",
       "description": "DNS ad blocking",
       "category": "Network",
       "container": "pihole"
@@ -50,7 +50,7 @@
       "id": "nextcloud",
       "label": "Nextcloud",
       "url": "http://localhost:8081",
-      "icon": "☁️",
+      "icon": "https://cdn.simpleicons.org/nextcloud",
       "description": "Personal cloud storage",
       "category": "Storage",
       "container": "nextcloud"
@@ -59,7 +59,7 @@
       "id": "jellyfin",
       "label": "Jellyfin",
       "url": "http://localhost:8096",
-      "icon": "🎬",
+      "icon": "https://cdn.simpleicons.org/jellyfin",
       "description": "Media server",
       "category": "Media",
       "container": "jellyfin"

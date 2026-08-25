@@ -579,7 +579,11 @@ body.edit-mode .tile:hover .tile-actions { opacity: 1; }
 
 .si-result-btn:hover { border-color: var(--accent); background: var(--surface-hover); }
 .si-result-btn.selected { border-color: var(--accent); background: rgba(108, 99, 255, 0.12); }
-.si-result-btn img { filter: invert(1); }
+.si-result-btn img.simpleicons-icon { filter: invert(1); }
+.si-result-source {
+  font-size: 0.66rem;
+  color: var(--text-faint);
+}
 
 /* ---- Tile visibility toggles ---- */
 .tile-toggles {
