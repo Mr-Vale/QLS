@@ -1,25 +1,26 @@
 # QLS — Quick Links & Status
 
-A fast, polished homelab homepage. Manage tiles, icons, backgrounds, and status checks entirely through the UI — no code editing required.
+A fast, polished homelab homepage. Manage tiles, icons, backgrounds, and status checks entirely through the UI — no code editing required. Runs as a **single Docker container** with a Python/Flask server that stores all dashboard state server-side.
 
 ---
 
 ## Features
 
-- ⚡ **Static-first, extremely fast** — plain HTML/CSS/JS, no framework
+- ⚡ **Single-container, lightweight** — plain HTML/CSS/JS frontend, minimal Python/Flask backend
 - 🎨 **Polished dark theme** — responsive grid, looks great on desktop and mobile
 - ➕ **Add / Edit / Delete tiles** — modal dialog, no code needed
 - ↕️ **Drag-and-drop** or **↑↓ buttons** to reorder tiles
 - 🗂️ **Category grouping** — tiles can be organised into labelled sections
 - 🟢 **Reachability status** — pings each tile URL directly; no backend needed
-- 🐳 **Optional Docker API** — lightweight Python/Flask API for container states
+- 🐳 **Optional Docker API** — lightweight Flask API for container states
 - 🖼️ **Custom background** — upload any image via Settings
 - 🔲 **Tile transparency** — adjustable opacity slider so the background shows through
 - 🔗 **New-tab control** — global default plus per-tile override
 - 👁️ **Tile visibility** — toggle icon, title, description, status dot per tile
 - 🎨 **Unified icon search** — search Simple Icons + Homelab SVG from one input
 - 📁 **Icon upload** — upload custom PNG/SVG/JPG icons when no search result fits
-- 💾 **Server-side persistence** — saved to `config.json` + `background.dat`
+- 💾 **Server-side persistence** — state saved to `config.json`; background to `background.dat`; icons cached in `assets/`
+- 📴 **Offline-capable** — icons and backgrounds are downloaded to the server on first use
 - ⌨️ **Keyboard shortcut** — `Ctrl/Cmd + K` to quickly add a tile
 
 ---
@@ -28,27 +29,25 @@ A fast, polished homelab homepage. Manage tiles, icons, backgrounds, and status 
 
 ### Requirements
 
-- Any modern web browser
-- One of: Docker (recommended), Python 3, or Node.js
+- Docker and Docker Compose **or** Python 3.12+
 
-### Option A — Docker Compose (recommended for NUC)
-
-This runs the static dashboard on **port 5555** and the optional Docker status API:
+### Option A — Docker Compose (recommended)
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/Mr-Vale/QLS.git
 cd QLS
 
-# 2. Start everything
+# 2. Build and start the single container
 docker compose up -d
 
 # 3. Open in your browser
-# http://<nuc-ip>:5555
+# http://<host-ip>:5555
 ```
 
-The dashboard is at **`http://<nuc-ip>:5555`**.
-The optional container status API is at `http://<nuc-ip>:5000/api/status`.
+The dashboard is served at **`http://<host-ip>:5555`** by the Flask app. There is no separate Nginx container.
+
+All dashboard state (tiles, settings, background image, cached icons) is stored in a Docker named volume (`qls-data`), so it **survives container restarts** automatically.
 
 #### Changing the port
 
@@ -56,9 +55,9 @@ Edit `docker-compose.yml` before running `docker compose up`:
 
 ```yaml
 services:
-  frontend:
+  qls:
     ports:
-      - "8080:80"   # change 8080 to any port you like
+      - "8080:5000"   # change 8080 to any port you like
 ```
 
 Then restart:
@@ -68,29 +67,54 @@ docker compose down
 docker compose up -d
 ```
 
+#### Persistent data
+
+The `qls-data` volume is mounted at `/data` inside the container. It contains:
+
+| File / Directory | Contents |
+|---|---|
+| `/data/config.json` | Tile and settings state |
+| `/data/background.dat` | Background image data URL |
+| `/data/assets/` | Downloaded icon and image files |
+
+To back up your data: `docker run --rm -v qls-data:/data -v $(pwd):/backup alpine tar czf /backup/qls-backup.tar.gz /data`
+
 ### Option B — Python (no Docker)
 
 ```bash
 git clone https://github.com/Mr-Vale/QLS.git
 cd QLS
-python3 -m http.server 5555
-# Open http://localhost:5555
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the Flask server
+python status.py
+# Open http://localhost:5000
 ```
 
-To use a different port, replace `5555` with your preferred port number.
+To use a different port: `PORT=5555 python status.py`
 
-### Option C — Node.js
+Data files default to the current directory (`./config.json`, `./background.dat`, `./assets/`). Override with environment variables:
 
 ```bash
-git clone https://github.com/Mr-Vale/QLS.git
-cd QLS
-npx serve -l 5555 .
-# Open http://localhost:5555
+CONFIG_PATH=/home/user/qls/config.json \
+BG_PATH=/home/user/qls/background.dat \
+ASSETS_DIR=/home/user/qls/assets \
+PORT=5555 \
+python status.py
 ```
 
-### Option D — Nginx / Caddy
+---
 
-Point the document root at the `QLS/` directory and set the listening port to **5555** (or any port). The `nginx.conf` in this repo is pre-configured for use with Docker Compose.
+## How It Works
+
+1. The Flask server (`status.py`) serves `index.html`, `style.css`, and `app.js` directly.
+2. On page load the browser calls `GET /api/config` — the server returns the saved tile/settings state.
+3. Every time you save a tile or change a setting, the browser calls `POST /api/config` to write the new state to `config.json` on the server.
+4. When you pick an icon from the search results, the browser calls `POST /api/assets/fetch` — the server downloads the icon and saves it locally; the tile config is updated to point to `/api/assets/<file>` so icons load offline.
+5. Background images are stored via `POST /api/config/background` as a data URL in `background.dat`.
+6. All devices and browsers see the same state because the server is the single source of truth.
 
 ---
 
@@ -151,28 +175,28 @@ Each tile gets a coloured dot:
 | ⚪ Grey | Unknown / status disabled |
 | 🟡 Yellow (pulse) | Currently checking |
 
-> **Note:** The browser uses `no-cors` mode for cross-origin requests, so the status dot shows whether the host is network-reachable, not the HTTP status code. Services that return 404 but are still up may show as green. This is the expected behaviour for a lightweight homelab check.
+> **Note:** The browser uses `no-cors` mode for cross-origin requests, so the status dot shows whether the host is network-reachable, not the HTTP status code.
 
-### Docker container status (optional backend)
+### Docker container status (optional)
 
-For per-container up/down from Docker's API, run the included Python/Flask sidecar:
+The same Flask server exposes `GET /api/status` for Docker container states.
 
-```bash
-docker compose up -d   # starts both frontend + status-api
-```
-
-Then in **Settings → Container Status API**:
+In **Settings → Container Status API**:
 
 - Enable the toggle
 - Set **API URL** to `/api/status`
 - Set each tile's **Container name** to the Docker container name
 
-#### Status API environment variables
+#### Environment variables
 
 | Variable     | Default | Description |
 |---|---|---|
-| `PORT`       | `5000`  | Port for the Flask API |
+| `PORT`       | `5000`  | Port for the Flask server |
 | `CONTAINERS` | *(all)* | Comma-separated container names to watch; empty = all |
+| `CONFIG_PATH` | `./config.json` | Path to the config file |
+| `BG_PATH`    | `./background.dat` | Path to the background image file |
+| `ASSETS_DIR` | `./assets` | Directory for cached icon/image files |
+| `STATIC_DIR` | *(script dir)* | Directory containing `index.html`, `style.css`, `app.js` |
 
 ---
 
@@ -195,7 +219,7 @@ Open via the **⚙️** button in the header.
 |---|---|
 | Open in new tab | Global default — checked = all tiles open in a new tab; unchecked = same tab |
 
-Per-tile override: enable **Override: open in new tab** in the tile editor to set a different behaviour for an individual tile.
+Per-tile override: enable **Override: open in new tab** in the tile editor.
 
 ### Reachability Status
 
@@ -240,10 +264,8 @@ When adding or editing a tile:
 2. Type a service name (e.g. `portainer`, `grafana`, `nextcloud`, `jellyfin`).
 3. Click **Search** (or press Enter).
 4. Results from both supported sources appear together with source labels.
-5. Click any matching icon to select it — the tile preview updates immediately.
+5. Click any matching icon to select it — the server downloads and caches the icon so it works offline.
 6. If no icon is found, switch to the **Upload** tab to upload your own.
-
-Icons are fetched from [cdn.simpleicons.org](https://cdn.simpleicons.org) and [homelab-svg-assets](https://github.com/loganmarchione/homelab-svg-assets) — requires internet access on the browser.
 
 ---
 
@@ -253,21 +275,18 @@ QLS reads `config.json` from the server on startup:
 
 ```json
 {
-  "site": {
+  "settings": {
     "title": "HomeLab",
-    "subtitle": "Quick Links & Status"
-  },
-  "status": {
-    "enabled": false,
-    "apiUrl": "/api/status",
-    "pollIntervalSeconds": 30
+    "subtitle": "Quick Links & Status",
+    "tileOpacity": 90,
+    "openInNewTab": true
   },
   "tiles": [
     {
       "id": "portainer",
       "label": "Portainer",
       "url": "http://nuc:9000",
-      "icon": "https://cdn.simpleicons.org/portainer",
+      "icon": "/api/assets/abc123.svg",
       "description": "Container management",
       "category": "Infrastructure"
     }
@@ -286,13 +305,20 @@ QLS/
 ├── index.html          # Dashboard UI
 ├── style.css           # Dark theme + responsive layout
 ├── app.js              # Tile management, icons, reachability, settings
-├── config.json         # Tile/settings store (written by the API on every save)
-├── background.dat      # Background image store (written by the API; pre-create with `touch background.dat`)
-├── status.py           # Optional Docker status API (Flask)
-├── Dockerfile.status   # Container for status API
-├── docker-compose.yml  # Full-stack deployment (port 5555)
-├── nginx.conf          # Nginx config with /api/ proxy
+├── status.py           # Flask server (dashboard + config API + Docker status)
+├── requirements.txt    # Python dependencies
+├── Dockerfile          # Single-container image
+├── docker-compose.yml  # Single-service deployment (port 5555)
 └── README.md
+```
+
+Data files (not in the image; stored in the `qls-data` volume or local directory):
+
+```
+/data/
+├── config.json         # Tile/settings store
+├── background.dat      # Background image store
+└── assets/             # Cached icon and image files
 ```
 
 ---
@@ -306,14 +332,13 @@ QLS/
 
 ---
 
-## Deployment Tips for a NUC
+## Deployment Tips
 
-- The default port is **5555**. Change it in `docker-compose.yml` if needed.
-- All dashboard changes (tiles, settings, background image) are saved **server-side** to `config.json` and `background.dat` automatically. Every device that loads the site sees the same current state.
-- Before first start, pre-create both data files so Docker does not create directories in their place: `touch config.json background.dat`.
-- The `docker.sock` mount on `status-api` is read-only — no write access to Docker.
-- Background images are stored server-side in `background.dat`. Images up to ~5 MB are supported.
+- The default port is **5555** (mapped to Flask's internal 5000). Change it in `docker-compose.yml` if needed.
+- All dashboard changes are saved **server-side** automatically. Every device that loads the site sees the same current state.
+- Icons fetched from the internet are downloaded and cached in `assets/`. The dashboard continues to display them offline after that.
 - Put QLS behind a reverse proxy (Traefik, Caddy, nginx) if you want HTTPS or a cleaner URL.
+- The `docker.sock` mount is read-only — no write access to Docker.
 
 ---
 

@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """
-QLS Status API — lightweight Flask server for Docker container status.
+QLS — Quick Links & Status
+Single-container Flask server.
 
-Exposes GET /api/status           →  { "container_name": "up"|"down", … }
-Exposes GET /api/config           →  current config.json content
-Exposes POST /api/config          →  overwrite config.json with request body
-Exposes GET /api/config/background  →  background image data URL (text/plain)
-Exposes POST /api/config/background →  persist a new background image data URL
-Exposes DELETE /api/config/background → remove the stored background image
+Serves the dashboard (HTML/CSS/JS/assets) and exposes:
+  GET  /                          →  dashboard HTML
+  GET  /api/status                →  { "container_name": "up"|"down", … }
+  GET  /api/config                →  current config.json content
+  POST /api/config                →  overwrite config.json with request body
+  GET  /api/config/background     →  background image data URL (text/plain)
+  POST /api/config/background     →  persist a new background image data URL
+  DELETE /api/config/background   →  remove the stored background image
+  POST /api/assets/fetch          →  download a remote URL and store it server-side;
+                                     returns { "path": "/api/assets/<filename>" }
+  GET  /api/assets/<filename>     →  serve a stored asset file
 
 Usage:
-    pip install flask docker
+    pip install flask docker requests
     python status.py
 
 Environment variables:
@@ -19,12 +25,18 @@ Environment variables:
                   leave empty to return all containers
     CONFIG_PATH   path to config.json (default ./config.json)
     BG_PATH       path to background data file (default ./background.dat)
+    ASSETS_DIR    directory for downloaded assets (default ./assets)
+    STATIC_DIR    directory for static files: index.html, style.css, app.js
+                  (default: same directory as this script)
 """
 
+import hashlib
+import mimetypes
 import os
 import re
 import json
-from flask import Flask, jsonify, request
+import urllib.parse
+from flask import Flask, jsonify, request, send_from_directory
 from flask.wrappers import Response
 
 try:
@@ -33,7 +45,19 @@ try:
 except ImportError:
     DOCKER_AVAILABLE = False
 
-app = Flask(__name__)
+try:
+    import requests as _requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+STATIC_DIR = os.environ.get("STATIC_DIR", _HERE)
+ASSETS_DIR = os.environ.get("ASSETS_DIR", os.path.join(_HERE, "assets"))
+os.makedirs(ASSETS_DIR, exist_ok=True)
+
+app = Flask(__name__, static_folder=None)
 # Limit request body size to 5 MB to prevent oversized payloads from being written to disk.
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
@@ -175,6 +199,130 @@ def delete_background():
 @app.route("/healthz")
 def healthz():
     return "ok"
+
+
+# ---------------------------------------------------------------------------
+# Asset fetch — downloads a remote icon/image and stores it server-side.
+# POST /api/assets/fetch
+# Body (JSON): { "url": "https://cdn.simpleicons.org/portainer" }
+# Response:    { "path": "/api/assets/<sha256>.<ext>" }
+# ---------------------------------------------------------------------------
+_ALLOWED_ASSET_MIME = {
+    "image/svg+xml", "image/png", "image/jpeg", "image/gif",
+    "image/webp", "image/x-icon", "image/vnd.microsoft.icon",
+}
+_ASSET_EXT = {
+    "image/svg+xml": ".svg",
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/x-icon": ".ico",
+    "image/vnd.microsoft.icon": ".ico",
+}
+# Maximum size for a fetched asset (2 MB)
+_MAX_ASSET_BYTES = 2 * 1024 * 1024
+# Allowed remote URL schemes
+_ALLOWED_SCHEMES = {"http", "https"}
+
+
+@app.route("/api/assets/fetch", methods=["POST"])
+def fetch_asset():
+    """Download a remote image URL and persist it in ASSETS_DIR."""
+    if not REQUESTS_AVAILABLE:
+        return jsonify({"error": "requests library not installed"}), 500
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 400
+    body = request.get_json(silent=True) or {}
+    url = body.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        return jsonify({"error": "Only http/https URLs are allowed"}), 400
+
+    try:
+        resp = _requests.get(url, timeout=10, stream=True)
+        resp.raise_for_status()
+    except Exception as exc:
+        logger.error("Failed to fetch asset %s: %s", url, exc)
+        return jsonify({"error": "Could not fetch remote URL"}), 502
+
+    # Determine MIME type from Content-Type header; fall back to URL path extension
+    content_type = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
+    if content_type not in _ALLOWED_ASSET_MIME:
+        # Try guessing from the URL
+        guessed, _ = mimetypes.guess_type(parsed.path)
+        if guessed and guessed in _ALLOWED_ASSET_MIME:
+            content_type = guessed
+        else:
+            # Default to SVG for CDN icon URLs that omit Content-Type
+            content_type = "image/svg+xml"
+
+    ext = _ASSET_EXT.get(content_type, ".bin")
+
+    # Read up to _MAX_ASSET_BYTES
+    chunks = []
+    total = 0
+    for chunk in resp.iter_content(chunk_size=8192):
+        total += len(chunk)
+        if total > _MAX_ASSET_BYTES:
+            return jsonify({"error": "Remote asset is too large (max 2 MB)"}), 413
+        chunks.append(chunk)
+    data = b"".join(chunks)
+
+    # Use SHA-256 of content as filename to deduplicate and avoid collisions
+    digest = hashlib.sha256(data).hexdigest()[:24]
+    filename = f"{digest}{ext}"
+    dest = os.path.join(ASSETS_DIR, filename)
+
+    if not os.path.exists(dest):
+        try:
+            with open(dest, "wb") as f:
+                f.write(data)
+        except Exception as exc:
+            logger.error("Error writing asset %s: %s", dest, exc)
+            return jsonify({"error": "Could not save asset"}), 500
+
+    return jsonify({"path": f"/api/assets/{filename}"})
+
+
+@app.route("/api/assets/<path:filename>")
+def serve_asset(filename):
+    """Serve a stored asset from ASSETS_DIR."""
+    # Prevent path traversal
+    safe = os.path.basename(filename)
+    if safe != filename:
+        return jsonify({"error": "Invalid filename"}), 400
+    return send_from_directory(ASSETS_DIR, safe)
+
+
+# ---------------------------------------------------------------------------
+# Static file serving — index.html, style.css, app.js and any other files
+# in STATIC_DIR.  These routes are only reached when the API routes above
+# do not match.
+# ---------------------------------------------------------------------------
+_STATIC_EXTENSIONS = {
+    ".html", ".css", ".js", ".svg", ".png", ".jpg", ".jpeg",
+    ".gif", ".ico", ".woff", ".woff2", ".ttf", ".webp",
+}
+
+
+@app.route("/")
+def index():
+    return send_from_directory(STATIC_DIR, "index.html")
+
+
+@app.route("/<path:filename>")
+def static_files(filename):
+    """Serve any static file from STATIC_DIR."""
+    # Only allow files with recognised extensions to avoid accidentally
+    # exposing data files like config.json or background.dat.
+    _, ext = os.path.splitext(filename)
+    if ext.lower() not in _STATIC_EXTENSIONS:
+        return jsonify({"error": "Not found"}), 404
+    return send_from_directory(STATIC_DIR, filename)
 
 
 if __name__ == "__main__":

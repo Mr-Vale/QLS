@@ -10,6 +10,7 @@
    ============================================================ */
 const CONFIG_URL       = '/api/config';
 const CONFIG_BG_URL    = '/api/config/background';
+const ASSETS_FETCH_URL = '/api/assets/fetch';
 
 /* ============================================================
    State
@@ -666,6 +667,21 @@ function probeIcon(candidate) {
   });
 }
 
+async function persistRemoteIcon(url) {
+  try {
+    const resp = await fetch(ASSETS_FETCH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (!resp.ok) return url; // fall back to remote URL on error
+    const data = await resp.json();
+    return data.path || url;
+  } catch (_) {
+    return url;
+  }
+}
+
 function selectIconResult(url, source, slug, buttonEl = null) {
   selectedIconValue = url;
   updateIconPreview(url);
@@ -674,6 +690,14 @@ function selectIconResult(url, source, slug, buttonEl = null) {
     buttonEl.classList.add('selected');
   }
   showToast(`${source}: ${slug}`, 'success', 1800);
+  // Persist the remote URL server-side so the dashboard works offline.
+  // Update selectedIconValue with the local path once the server responds.
+  if (isUrl(url)) {
+    persistRemoteIcon(url).then(localPath => {
+      if (selectedIconValue === url) selectedIconValue = localPath;
+      if (localPath !== url) updateIconPreview(localPath);
+    });
+  }
 }
 
 async function searchIcons() {
