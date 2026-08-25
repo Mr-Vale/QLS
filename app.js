@@ -38,6 +38,10 @@ let state = {
   reachTimer: null,
   dragSrcId: null,
 };
+let serverAvailable = true;
+let serverUnavailableNotified = false;
+let serverReconnectTimer = null;
+let serverReconnectInFlight = false;
 
 /* ============================================================
    Utilities
@@ -46,9 +50,56 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+async function loadServerConfigWithRetry(maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const ok = await loadServerConfig();
+    if (ok) return true;
+    if (attempt < maxAttempts) await sleep(350 * attempt);
+  }
+  return false;
+}
+
+function startServerReconnectPolling() {
+  if (serverReconnectTimer) return;
+  serverReconnectTimer = setInterval(async () => {
+    if (serverReconnectInFlight || serverAvailable) return;
+    serverReconnectInFlight = true;
+    try {
+      const restored = await loadServerConfigWithRetry(1);
+      if (restored) {
+        serverAvailable = true;
+        serverUnavailableNotified = false;
+        setServerReadOnlyMode(false);
+        if (serverReconnectTimer) {
+          clearInterval(serverReconnectTimer);
+          serverReconnectTimer = null;
+        }
+        applyUISettings();
+        renderTiles();
+        restartStatusPolling();
+        restartReachabilityPolling();
+        showToast('Server connection restored.', 'success', 2600);
+      }
+    } finally {
+      serverReconnectInFlight = false;
+    }
+  }, 10000);
+}
+
 function saveState() {
+  if (!serverAvailable) {
+    notifyServerUnavailable();
+    return;
+  }
   // Persist to server (best-effort, non-blocking)
   saveStateToServer();
+}
+
+function notifyServerUnavailable() {
+  if (!serverUnavailableNotified) {
+    showToast('Server unavailable: changes are disabled until connection is restored.', 'error', 4200);
+    serverUnavailableNotified = true;
+  }
 }
 
 function saveStateToServer() {
@@ -91,6 +142,10 @@ function escHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /* ============================================================
@@ -430,6 +485,7 @@ function resetIconTabs() {
 }
 
 function openAddModal() {
+  if (!serverAvailable) { notifyServerUnavailable(); return; }
   tileModalTitle.textContent = 'Add Tile';
   editIdInput.value = '';
   tileForm.reset();
@@ -446,6 +502,7 @@ function openAddModal() {
 }
 
 function openEditModal(id) {
+  if (!serverAvailable) { notifyServerUnavailable(); return; }
   const tile = state.tiles.find(t => t.id === id);
   if (!tile) return;
   tileModalTitle.textContent = 'Edit Tile';
@@ -557,6 +614,7 @@ tileModal.addEventListener('click', (e) => { if (e.target === tileModal) closeMo
    ============================================================ */
 const SI_CDN = 'https://cdn.simpleicons.org/';
 const HLSVG_CDN = 'https://raw.githubusercontent.com/loganmarchione/homelab-svg-assets/main/assets/';
+const ICON_PROBE_TIMEOUT_MS = 1200;
 
 function slugify(name) {
   return name.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
@@ -604,7 +662,7 @@ function probeIcon(candidate) {
     img.onload = () => done(true);
     img.onerror = () => done(false);
     img.src = candidate.url;
-    setTimeout(() => done(false), 1800);
+    setTimeout(() => done(false), ICON_PROBE_TIMEOUT_MS);
   });
 }
 
@@ -651,6 +709,7 @@ async function searchIcons() {
     img.alt = slug;
     img.style.width = '32px';
     img.style.height = '32px';
+    if (source === 'Simple Icons') img.classList.add('simpleicons-icon');
     btn.appendChild(img);
 
     const label = document.createElement('span');
@@ -668,8 +727,15 @@ async function searchIcons() {
     resultsEl.appendChild(btn);
   });
 
-  const normalizedQuery = slugify(query);
-  const bestExact = results.find(r => r.slug === normalizedQuery);
+  const normalized = query.toLowerCase().trim();
+  const exactVariants = new Set([
+    slugify(normalized),
+    normalized.replace(/\s+/g, '-'),
+    normalized.replace(/\s+/g, '_'),
+    normalized.replace(/\s+/g, ''),
+    normalized,
+  ]);
+  const bestExact = results.find(r => exactVariants.has(r.slug));
   if (bestExact) {
     const bestBtn = [...resultsEl.querySelectorAll('.si-result-btn')]
       .find(b => b.title === `${bestExact.source}: ${bestExact.slug}`);
@@ -750,6 +816,18 @@ document.getElementById('btn-add').addEventListener('click', openAddModal);
    ============================================================ */
 const settingsPanel   = document.getElementById('settings-panel');
 const settingsOverlay = document.getElementById('settings-overlay');
+const addBtn = document.getElementById('btn-add');
+const editBtn = document.getElementById('btn-edit-mode');
+const settingsBtn = document.getElementById('btn-settings');
+
+function setServerReadOnlyMode(enabled) {
+  addBtn.disabled = enabled;
+  editBtn.disabled = enabled;
+  settingsBtn.disabled = enabled;
+  addBtn.title = enabled ? 'Unavailable while server is offline' : 'Add tile (Ctrl+K)';
+  editBtn.title = enabled ? 'Unavailable while server is offline' : 'Toggle edit mode';
+  settingsBtn.title = enabled ? 'Unavailable while server is offline' : 'Open settings';
+}
 
 function openSettings() {
   syncSettingsUI();
@@ -1107,8 +1185,13 @@ document.addEventListener('keydown', (e) => {
    ============================================================ */
 async function init() {
   // Load shared server config first.
-  const serverLoaded = await loadServerConfig();
-  if (!serverLoaded) showToast('Server config unavailable. Using defaults for this session.', 'error');
+  const serverLoaded = await loadServerConfigWithRetry();
+  serverAvailable = serverLoaded;
+  setServerReadOnlyMode(!serverLoaded);
+  if (!serverLoaded) {
+    showToast('Server config unavailable after retries. Dashboard is read-only.', 'error', 5200);
+    startServerReconnectPolling();
+  }
 
   applyUISettings();
   renderTiles();
