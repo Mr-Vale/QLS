@@ -38,7 +38,7 @@ import re
 import json
 import socket
 import urllib.parse
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, make_response, request, send_from_directory
 from flask.wrappers import Response
 
 try:
@@ -123,11 +123,41 @@ BG_PATH = os.environ.get("BG_PATH", os.path.join(os.path.dirname(__file__), "bac
 _VALID_BG_RE = re.compile(r"^data:image/[a-z+\-]+;base64,[A-Za-z0-9+/=\r\n]+$")
 
 
+def _content_version(raw: bytes) -> str:
+    """Return a stable short content hash for cache/version checks."""
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+def _versioned_cache_control() -> str:
+    """Long cache for URLs that include a version token."""
+    return "public, max-age=31536000, immutable"
+
+
+def _revalidate_cache_control() -> str:
+    """Reusable cache with revalidation for unversioned URLs."""
+    return "public, max-age=0, must-revalidate"
+
+
+def _get_background_version() -> str:
+    try:
+        with open(BG_PATH, "rb") as f:
+            return _content_version(f.read())
+    except FileNotFoundError:
+        return ""
+    except Exception as exc:
+        logger.error("Error reading background for versioning: %s", exc)
+        return ""
+
+
 @app.route("/api/config", methods=["GET"])
 def get_config():
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if isinstance(data, dict):
+            bg_version = _get_background_version()
+            if bg_version:
+                data["backgroundVersion"] = bg_version
         return jsonify(data)
     except FileNotFoundError:
         return jsonify({}), 200
@@ -157,9 +187,25 @@ def save_config():
 def get_background():
     """Return the stored background data URL, or 404 if none is set."""
     try:
-        with open(BG_PATH, "r", encoding="utf-8") as f:
-            data_url = f.read()
-        return data_url, 200, {"Content-Type": "text/plain; charset=utf-8"}
+        with open(BG_PATH, "rb") as f:
+            raw = f.read()
+        version = _content_version(raw)
+        etag = f"\"{version}\""
+        if request.if_none_match and request.if_none_match.contains(etag):
+            resp = make_response("", 304)
+            resp.headers["ETag"] = etag
+            resp.headers["Cache-Control"] = (
+                _versioned_cache_control() if request.args.get("v") else _revalidate_cache_control()
+            )
+            return resp
+
+        resp = make_response(raw.decode("utf-8"))
+        resp.headers["Content-Type"] = "text/plain; charset=utf-8"
+        resp.headers["ETag"] = etag
+        resp.headers["Cache-Control"] = (
+            _versioned_cache_control() if request.args.get("v") else _revalidate_cache_control()
+        )
+        return resp
     except FileNotFoundError:
         return "", 404
     except Exception as exc:
@@ -270,7 +316,9 @@ def fetch_asset():
         return jsonify({"error": "Requests to private/internal addresses are not allowed"}), 400
 
     try:
-        resp = _requests.get(url, timeout=10, stream=True)
+        resp = _requests.get(url, timeout=10, stream=True, allow_redirects=False)
+        if 300 <= resp.status_code < 400:
+            return jsonify({"error": "Redirects are not allowed for remote assets"}), 400
         resp.raise_for_status()
     except Exception as exc:
         logger.error("Failed to fetch asset %s: %s", url, exc)
@@ -330,7 +378,9 @@ def serve_asset(filename):
     <string:filename> rejects slashes, preventing path-traversal via the URL.
     Flask's send_from_directory also enforces the directory boundary internally.
     """
-    return send_from_directory(ASSETS_DIR, filename)
+    response = send_from_directory(ASSETS_DIR, filename, conditional=True)
+    response.headers["Cache-Control"] = _versioned_cache_control()
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +409,9 @@ def static_files(filename):
     _, ext = os.path.splitext(filename)
     if ext.lower() not in _STATIC_EXTENSIONS:
         return jsonify({"error": "Not found"}), 404
-    return send_from_directory(STATIC_DIR, filename)
+    response = send_from_directory(STATIC_DIR, filename, conditional=True)
+    response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
+    return response
 
 
 if __name__ == "__main__":
