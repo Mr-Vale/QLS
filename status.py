@@ -249,20 +249,7 @@ def fetch_asset():
         logger.error("Failed to fetch asset %s: %s", url, exc)
         return jsonify({"error": "Could not fetch remote URL"}), 502
 
-    # Determine MIME type from Content-Type header; fall back to URL path extension
-    content_type = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
-    if content_type not in _ALLOWED_ASSET_MIME:
-        # Try guessing from the URL
-        guessed, _ = mimetypes.guess_type(parsed.path)
-        if guessed and guessed in _ALLOWED_ASSET_MIME:
-            content_type = guessed
-        else:
-            # Default to SVG for CDN icon URLs that omit Content-Type
-            content_type = "image/svg+xml"
-
-    ext = _ASSET_EXT.get(content_type, ".bin")
-
-    # Read up to _MAX_ASSET_BYTES
+    # Read up to _MAX_ASSET_BYTES before inspecting MIME so we can sniff content
     chunks = []
     total = 0
     for chunk in resp.iter_content(chunk_size=8192):
@@ -271,6 +258,27 @@ def fetch_asset():
             return jsonify({"error": "Remote asset is too large (max 2 MB)"}), 413
         chunks.append(chunk)
     data = b"".join(chunks)
+
+    # Determine MIME type: header → URL extension → content sniff (SVG only)
+    content_type = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
+    if content_type not in _ALLOWED_ASSET_MIME:
+        guessed, _ = mimetypes.guess_type(parsed.path)
+        if guessed and guessed in _ALLOWED_ASSET_MIME:
+            content_type = guessed
+        else:
+            # Last resort: sniff the first bytes for SVG markers.
+            # Many icon CDNs (e.g. cdn.simpleicons.org) serve SVGs without a
+            # file extension and without setting Content-Type.  If the content
+            # looks like XML/SVG it is safe to treat it as such.
+            head = data.lstrip()[:128]
+            if head.startswith(b"<svg") or head.startswith(b"<?xml"):
+                content_type = "image/svg+xml"
+            else:
+                # Cannot confirm an allowed image type — reject to avoid storing
+                # non-image content (e.g. scripts) disguised as icon files.
+                return jsonify({"error": "Remote URL did not return a supported image type"}), 415
+
+    ext = _ASSET_EXT.get(content_type, ".bin")
 
     # Use SHA-256 of content as filename to deduplicate and avoid collisions
     digest = hashlib.sha256(data).hexdigest()[:24]
@@ -288,20 +296,22 @@ def fetch_asset():
     return jsonify({"path": f"/api/assets/{filename}"})
 
 
-@app.route("/api/assets/<path:filename>")
+@app.route("/api/assets/<string:filename>")
 def serve_asset(filename):
-    """Serve a stored asset from ASSETS_DIR."""
-    # Prevent path traversal
-    safe = os.path.basename(filename)
-    if safe != filename:
-        return jsonify({"error": "Invalid filename"}), 400
-    return send_from_directory(ASSETS_DIR, safe)
+    """Serve a stored asset from ASSETS_DIR.
+
+    <string:filename> rejects slashes, preventing path-traversal via the URL.
+    Flask's send_from_directory also enforces the directory boundary internally.
+    """
+    return send_from_directory(ASSETS_DIR, filename)
 
 
 # ---------------------------------------------------------------------------
 # Static file serving — index.html, style.css, app.js and any other files
-# in STATIC_DIR.  These routes are only reached when the API routes above
-# do not match.
+# in STATIC_DIR.
+# NOTE: API routes are registered first in this module, so Flask will always
+# prefer them over the catch-all static route below.  New API routes must be
+# added above the `index` and `static_files` functions to stay unambiguous.
 # ---------------------------------------------------------------------------
 _STATIC_EXTENSIONS = {
     ".html", ".css", ".js", ".svg", ".png", ".jpg", ".jpeg",
