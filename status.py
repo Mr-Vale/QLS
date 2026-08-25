@@ -199,7 +199,7 @@ def get_background():
             )
             return resp
 
-        resp = make_response(raw)
+        resp = make_response(raw.decode("utf-8"))
         resp.headers["Content-Type"] = "text/plain; charset=utf-8"
         resp.headers["ETag"] = etag
         resp.headers["Cache-Control"] = (
@@ -316,7 +316,9 @@ def fetch_asset():
         return jsonify({"error": "Requests to private/internal addresses are not allowed"}), 400
 
     try:
-        resp = _requests.get(url, timeout=10, stream=True)
+        resp = _requests.get(url, timeout=10, stream=True, allow_redirects=False)
+        if 300 <= resp.status_code < 400:
+            return jsonify({"error": "Redirects are not allowed for remote assets"}), 400
         resp.raise_for_status()
     except Exception as exc:
         logger.error("Failed to fetch asset %s: %s", url, exc)
