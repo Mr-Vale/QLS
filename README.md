@@ -221,7 +221,7 @@ Per-tile override: enable **Override: open in new tab** in the tile editor to se
 |---|---|
 | Export config | Downloads `qls-config.json` with all tiles and settings |
 | Import config | Load a previously exported JSON to restore tiles and settings |
-| Reset to defaults | Clears `localStorage` and reloads `config.json` |
+| Reset to defaults | Resets all tiles and settings to defaults and immediately writes the cleared state to the server |
 
 ---
 
@@ -277,7 +277,7 @@ On first visit (no `localStorage` data), QLS reads `config.json` to pre-populate
 }
 ```
 
-**Tip:** After customising through the UI, use **Settings → Export config** to download the current state and save it as `config.json`. Future fresh installs will start with your tile set.
+**Tip:** After customising through the UI, use **Settings → Export config** to download the current state as a backup. The live state is always stored server-side and loaded automatically on every page visit.
 
 ---
 
@@ -288,7 +288,8 @@ QLS/
 ├── index.html          # Dashboard UI
 ├── style.css           # Dark theme + responsive layout
 ├── app.js              # Tile management, icons, reachability, settings
-├── config.json         # Default tile/settings seed (first-visit only)
+├── config.json         # Tile/settings store (written by the API on every save)
+├── background.dat      # Background image store (written by the API; pre-create with `touch background.dat`)
 ├── status.py           # Optional Docker status API (Flask)
 ├── Dockerfile.status   # Container for status API
 ├── docker-compose.yml  # Full-stack deployment (port 5555)
@@ -310,10 +311,10 @@ QLS/
 ## Deployment Tips for a NUC
 
 - The default port is **5555**. Change it in `docker-compose.yml` if needed.
-- To share tiles across multiple browsers or devices, use **Export config**, commit `config.json`, and redeploy. Every new browser session will load the same starting tiles.
+- All dashboard changes (tiles, settings, background image) are saved **server-side** to `config.json` and `background.dat` automatically. Every device that loads the site sees the same current state.
+- Before first start, pre-create both data files so Docker does not create directories in their place: `touch config.json background.dat`.
 - The `docker.sock` mount on `status-api` is read-only — no write access to Docker.
-- Tiles, settings, and uploaded icons are stored in the **browser's `localStorage`**. Clearing browser data will reset to `config.json` defaults.
-- Large background images are stored as data URLs in `localStorage` — prefer images under ~2 MB to avoid storage limits.
+- Background images are stored server-side in `background.dat`. Images up to ~5 MB are supported.
 - Put QLS behind a reverse proxy (Traefik, Caddy, nginx) if you want HTTPS or a cleaner URL.
 
 ---

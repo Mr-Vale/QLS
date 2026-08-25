@@ -11,6 +11,7 @@
 const STORAGE_TILES    = 'qls_tiles';
 const STORAGE_SETTINGS = 'qls_settings';
 const CONFIG_URL       = '/api/config';
+const CONFIG_BG_URL    = '/api/config/background';
 
 /* ============================================================
    State
@@ -72,6 +73,17 @@ function saveStateToServer() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }).catch(() => { /* server save failed — local save still valid */ });
+
+  // Save background image separately (may be large — stored as a sidecar file)
+  if (backgroundImage) {
+    fetch(CONFIG_BG_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: backgroundImage,
+    }).catch(() => {});
+  } else {
+    fetch(CONFIG_BG_URL, { method: 'DELETE' }).catch(() => {});
+  }
 }
 
 function loadState() {
@@ -890,8 +902,7 @@ document.getElementById('s-reset').addEventListener('click', () => {
   localStorage.removeItem(STORAGE_TILES);
   localStorage.removeItem(STORAGE_SETTINGS);
   localStorage.removeItem('qls_bg');
-  state.tiles = [];
-  state.settings = {
+  const defaults = {
     title: 'QLS',
     subtitle: 'Quick Links & Status',
     backgroundImage: '',
@@ -903,15 +914,16 @@ document.getElementById('s-reset').addEventListener('click', () => {
     statusApiUrl: '/api/status',
     pollIntervalSeconds: 30,
   };
-  loadServerConfig().then(ok => {
-    if (!ok) loadState();
-    syncSettingsUI();
-    applyUISettings();
-    renderTiles();
-    restartStatusPolling();
-    restartReachabilityPolling();
-    showToast('Reset to defaults.', 'info');
-  });
+  state.tiles = [];
+  state.settings = { ...defaults };
+  // Clear server-side state
+  saveStateToServer();
+  syncSettingsUI();
+  applyUISettings();
+  renderTiles();
+  restartStatusPolling();
+  restartReachabilityPolling();
+  showToast('Reset to defaults.', 'info');
 });
 
 /* ============================================================
@@ -1051,6 +1063,18 @@ async function loadServerConfig() {
     if (Array.isArray(cfg.tiles)) {
       state.tiles = cfg.tiles.map(t => ({ id: t.id || uid(), ...t }));
     }
+
+    // Load background image from sidecar endpoint (server validates format on write)
+    try {
+      const bgResp = await fetch(CONFIG_BG_URL, { cache: 'no-cache' });
+      if (bgResp.ok) {
+        const bg = await bgResp.text();
+        state.settings.backgroundImage = bg || '';
+      } else {
+        state.settings.backgroundImage = '';
+      }
+    } catch (_) { /* background unavailable — leave as default */ }
+
     return true;
   } catch (_) {
     return false;
