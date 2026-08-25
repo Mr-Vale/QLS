@@ -17,6 +17,7 @@ const ASSETS_FETCH_URL = '/api/assets/fetch';
    ============================================================ */
 let state = {
   tiles: [],
+  backgroundVersion: '',
   settings: {
     title: 'QLS',
     subtitle: 'Quick Links & Status',
@@ -126,6 +127,29 @@ function saveStateToServer() {
 
 function isUrl(str) {
   return /^https?:\/\//i.test(str);
+}
+
+function isDataImageUrl(str) {
+  return /^data:image\/[a-z+\-]+;base64,/i.test(str || '');
+}
+
+function isServerAssetPath(str) {
+  return /^\/api\/assets\/[A-Za-z0-9._-]+$/.test(str || '');
+}
+
+function isLocalImagePath(str) {
+  return /^(\/|\.\/|\.\.\/).+\.(svg|png|jpe?g|gif|webp|ico)(\?.*)?$/i.test(str || '');
+}
+
+function iconImageSrc(value) {
+  if (!value) return '';
+  if (isDataImageUrl(value)) return value;
+  if (isUrl(value)) {
+    const src = safeUrl(value);
+    return src === '#' ? '' : src;
+  }
+  if (isServerAssetPath(value) || isLocalImagePath(value)) return value;
+  return '';
 }
 
 function safeUrl(str) {
@@ -249,17 +273,13 @@ function buildTileEl(tile) {
   if (showIcon) {
     const iconEl = document.createElement('span');
     iconEl.className = 'tile-icon';
-    if (tile.icon && isUrl(tile.icon)) {
+    const iconSrc = iconImageSrc(tile.icon);
+    if (iconSrc) {
       const img = document.createElement('img');
-      img.src = safeUrl(tile.icon);
+      img.src = iconSrc;
       img.alt = tile.label || '';
       img.loading = 'lazy';
-      iconEl.appendChild(img);
-    } else if (tile.icon && /^data:image\/[a-z+]+;base64,/.test(tile.icon)) {
-      const img = document.createElement('img');
-      img.src = tile.icon;
-      img.alt = tile.label || '';
-      img.loading = 'lazy';
+      img.decoding = 'async';
       iconEl.appendChild(img);
     } else {
       iconEl.textContent = tile.icon || '🔗';
@@ -539,21 +559,13 @@ function closeModal(overlay) {
 function updateIconPreview(value) {
   iconPreviewBox.textContent = '';
   if (!value) { iconPreviewBox.textContent = '🔗'; return; }
+  if (String(value).startsWith('data:') && !isDataImageUrl(value)) {
+    iconPreviewBox.textContent = '❓';
+    return;
+  }
 
-  if (value.startsWith('data:')) {
-    // Only allow image data URLs to prevent setting non-image data as src
-    if (!/^data:image\/[a-z+]+;base64,/.test(value)) {
-      iconPreviewBox.textContent = '❓';
-      return;
-    }
-    const img = document.createElement('img');
-    img.setAttribute('src', value);
-    img.alt = 'icon';
-    img.onerror = () => { iconPreviewBox.textContent = '❓'; };
-    iconPreviewBox.appendChild(img);
-  } else if (isUrl(value)) {
-    const src = safeUrl(value);
-    if (src === '#') { iconPreviewBox.textContent = '🔗'; return; }
+  const src = iconImageSrc(value);
+  if (src) {
     const img = document.createElement('img');
     img.setAttribute('src', src);
     img.alt = 'icon';
@@ -1171,10 +1183,14 @@ async function loadServerConfig() {
     if (Array.isArray(cfg.tiles)) {
       state.tiles = cfg.tiles.map(t => ({ id: t.id || uid(), ...t }));
     }
+    state.backgroundVersion = typeof cfg.backgroundVersion === 'string' ? cfg.backgroundVersion : '';
 
     // Load background image from sidecar endpoint (server validates format on write)
     try {
-      const bgResp = await fetch(CONFIG_BG_URL, { cache: 'no-cache' });
+      const bgUrl = state.backgroundVersion
+        ? `${CONFIG_BG_URL}?v=${encodeURIComponent(state.backgroundVersion)}`
+        : CONFIG_BG_URL;
+      const bgResp = await fetch(bgUrl);
       if (bgResp.ok) {
         const bg = await bgResp.text();
         state.settings.backgroundImage = bg || '';
