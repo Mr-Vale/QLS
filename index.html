@@ -76,6 +76,7 @@
           <div class="icon-tabs">
             <button type="button" class="icon-tab active" data-tab="manual">Emoji / URL</button>
             <button type="button" class="icon-tab" data-tab="simpleicons">Simple Icons</button>
+            <button type="button" class="icon-tab" data-tab="homelabsvg">Homelab SVG</button>
             <button type="button" class="icon-tab" data-tab="upload">Upload</button>
           </div>
 
@@ -95,13 +96,23 @@
             <p class="form-hint">Icons served from cdn.simpleicons.org — requires internet access</p>
           </div>
 
+          <!-- Tab: Homelab SVG assets search -->
+          <div class="icon-tab-panel" id="icon-panel-homelabsvg">
+            <div class="si-search-row">
+              <input class="form-input" id="f-hlsvg-query" type="text" placeholder="portainer, grafana, proxmox…" />
+              <button type="button" class="btn btn-ghost" id="btn-hlsvg-search">Search</button>
+            </div>
+            <div id="hlsvg-results" class="si-results"></div>
+            <p class="form-hint">Icons from github.com/loganmarchione/homelab-svg-assets — requires internet access</p>
+          </div>
+
           <!-- Tab: Upload custom icon -->
           <div class="icon-tab-panel" id="icon-panel-upload">
             <label class="btn btn-ghost upload-label" style="width:100%;justify-content:center;">
               📁 Choose image file
               <input type="file" id="f-icon-upload" accept="image/*" style="display:none;" />
             </label>
-            <p class="form-hint">PNG, JPG, SVG or GIF — stored as data URL in browser</p>
+            <p class="form-hint">PNG, JPG, SVG or GIF — stored server-side</p>
           </div>
         </div>
 
