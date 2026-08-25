@@ -673,6 +673,89 @@ function searchSimpleIcons() {
 }
 
 /* ============================================================
+   Homelab SVG Assets search
+   ============================================================ */
+const HLSVG_CDN = 'https://raw.githubusercontent.com/loganmarchione/homelab-svg-assets/main/assets/';
+
+document.getElementById('btn-hlsvg-search').addEventListener('click', searchHomelabSvg);
+document.getElementById('f-hlsvg-query').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); searchHomelabSvg(); }
+});
+
+function searchHomelabSvg() {
+  const query = document.getElementById('f-hlsvg-query').value.trim();
+  if (!query) return;
+  const resultsEl = document.getElementById('hlsvg-results');
+  resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">Searching…</span>';
+
+  const slugs = [
+    query.toLowerCase().replace(/\s+/g, '-'),
+    query.toLowerCase().replace(/\s+/g, '_'),
+    slugify(query),
+    query.toLowerCase(),
+  ];
+  const unique = [...new Set(slugs)];
+
+  const candidates = unique.map(slug => ({
+    slug,
+    url: `${HLSVG_CDN}${encodeURIComponent(slug)}.svg`,
+  }));
+
+  resultsEl.innerHTML = '';
+  let found = 0;
+
+  candidates.forEach(({ slug, url }, i) => {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = slug;
+    img.style.width = '32px';
+    img.style.height = '32px';
+    img.style.filter = 'invert(1)';
+    img.style.display = 'none';
+
+    img.onload = () => {
+      found++;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'si-result-btn';
+      btn.title = slug;
+      btn.appendChild(img.cloneNode());
+      btn.querySelector('img').style.display = '';
+      const label = document.createElement('span');
+      label.textContent = slug;
+      label.style.fontSize = '0.72rem';
+      label.style.color = 'var(--text-muted)';
+      btn.appendChild(label);
+      btn.addEventListener('click', () => {
+        selectedIconValue = url;
+        updateIconPreview(url);
+        showToast(`Homelab SVG: ${slug}`, 'success', 1800);
+        document.querySelectorAll('#hlsvg-results .si-result-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+      });
+      resultsEl.appendChild(btn);
+    };
+
+    img.onerror = () => {
+      if (found === 0 && i === candidates.length - 1) {
+        resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">No icon found — try uploading a custom image.</span>';
+      }
+    };
+
+    img.style.position = 'absolute';
+    img.style.visibility = 'hidden';
+    document.body.appendChild(img);
+    setTimeout(() => img.remove(), 5000);
+  });
+
+  setTimeout(() => {
+    if (resultsEl.children.length === 0) {
+      resultsEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem;">No icon found — try a different name or upload a custom image.</span>';
+    }
+  }, 3000);
+}
+
+/* ============================================================
    Icon file upload
    ============================================================ */
 document.getElementById('f-icon-upload').addEventListener('change', (e) => {
