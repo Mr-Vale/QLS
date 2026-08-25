@@ -31,10 +31,12 @@ Environment variables:
 """
 
 import hashlib
+import ipaddress
 import mimetypes
 import os
 import re
 import json
+import socket
 import urllib.parse
 from flask import Flask, jsonify, request, send_from_directory
 from flask.wrappers import Response
@@ -226,6 +228,27 @@ _MAX_ASSET_BYTES = 2 * 1024 * 1024
 _ALLOWED_SCHEMES = {"http", "https"}
 
 
+def _is_private_host(hostname: str) -> bool:
+    """Return True if hostname resolves to a private/loopback/link-local address.
+
+    This guards against SSRF by preventing the server from fetching resources
+    on the local network or loopback interface on behalf of an external caller.
+    """
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return True  # treat unresolvable hosts as unsafe
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return True
+        except ValueError:
+            return True
+    return False
+
+
 @app.route("/api/assets/fetch", methods=["POST"])
 def fetch_asset():
     """Download a remote image URL and persist it in ASSETS_DIR."""
@@ -241,6 +264,10 @@ def fetch_asset():
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES:
         return jsonify({"error": "Only http/https URLs are allowed"}), 400
+
+    hostname = parsed.hostname or ""
+    if not hostname or _is_private_host(hostname):
+        return jsonify({"error": "Requests to private/internal addresses are not allowed"}), 400
 
     try:
         resp = _requests.get(url, timeout=10, stream=True)
