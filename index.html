@@ -70,40 +70,22 @@
           <input class="form-input" id="f-desc" type="text" placeholder="Container management" maxlength="80" />
         </div>
 
-        <!-- Icon section with tabs -->
+        <!-- Icon section -->
         <div class="form-group">
           <label class="form-label">Icon</label>
           <div class="icon-tabs">
-            <button type="button" class="icon-tab active" data-tab="manual">Emoji / URL</button>
-            <button type="button" class="icon-tab" data-tab="simpleicons">Simple Icons</button>
-            <button type="button" class="icon-tab" data-tab="homelabsvg">Homelab SVG</button>
+            <button type="button" class="icon-tab active" data-tab="search">Icon Search</button>
             <button type="button" class="icon-tab" data-tab="upload">Upload</button>
           </div>
 
-          <!-- Tab: Manual emoji or URL -->
-          <div class="icon-tab-panel active" id="icon-panel-manual">
-            <input class="form-input" id="f-icon" type="text" placeholder="🐳  or  https://example.com/logo.png" />
-            <p class="form-hint">Enter an emoji or paste an image URL</p>
-          </div>
-
-          <!-- Tab: Simple Icons CDN search -->
-          <div class="icon-tab-panel" id="icon-panel-simpleicons">
+          <!-- Tab: Unified icon search -->
+          <div class="icon-tab-panel active" id="icon-panel-search">
             <div class="si-search-row">
-              <input class="form-input" id="f-si-query" type="text" placeholder="portainer, grafana, nextcloud…" />
-              <button type="button" class="btn btn-ghost" id="btn-si-search">Search</button>
+              <input class="form-input" id="f-icon-query" type="text" placeholder="portainer, grafana, nextcloud…" />
+              <button type="button" class="btn btn-ghost" id="btn-icon-search">Search</button>
             </div>
-            <div id="si-results" class="si-results"></div>
-            <p class="form-hint">Icons served from cdn.simpleicons.org — requires internet access</p>
-          </div>
-
-          <!-- Tab: Homelab SVG assets search -->
-          <div class="icon-tab-panel" id="icon-panel-homelabsvg">
-            <div class="si-search-row">
-              <input class="form-input" id="f-hlsvg-query" type="text" placeholder="portainer, grafana, proxmox…" />
-              <button type="button" class="btn btn-ghost" id="btn-hlsvg-search">Search</button>
-            </div>
-            <div id="hlsvg-results" class="si-results"></div>
-            <p class="form-hint">Icons from github.com/loganmarchione/homelab-svg-assets — requires internet access</p>
+            <div id="icon-results" class="si-results"></div>
+            <p class="form-hint">Searches Simple Icons + Homelab SVG sources together</p>
           </div>
 
           <!-- Tab: Upload custom icon -->

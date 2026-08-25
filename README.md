@@ -17,9 +17,9 @@ A fast, polished homelab homepage. Manage tiles, icons, backgrounds, and status 
 - 🔲 **Tile transparency** — adjustable opacity slider so the background shows through
 - 🔗 **New-tab control** — global default plus per-tile override
 - 👁️ **Tile visibility** — toggle icon, title, description, status dot per tile
-- 🎨 **Simple Icons** — search and use icons from [cdn.simpleicons.org](https://cdn.simpleicons.org) when creating tiles
-- 📁 **Icon upload** — upload custom PNG/SVG/JPG icons, stored in browser
-- 💾 **Local persistence** — saved to `localStorage`; export/import as JSON
+- 🎨 **Unified icon search** — search Simple Icons + Homelab SVG from one input
+- 📁 **Icon upload** — upload custom PNG/SVG/JPG icons when no search result fits
+- 💾 **Server-side persistence** — saved to `config.json` + `background.dat`
 - ⌨️ **Keyboard shortcut** — `Ctrl/Cmd + K` to quickly add a tile
 
 ---
@@ -104,10 +104,7 @@ Point the document root at the `QLS/` directory and set the listening port to **
    - **URL** — the address the tile links to (e.g. `http://192.168.1.10:9000`)
    - **Category** — optional group header (e.g. *Monitoring*, *Media*)
    - **Description** — short subtitle shown under the label
-   - **Icon** — choose from three tabs:
-     - *Emoji / URL* — type an emoji (`🐳`) or paste an image URL
-     - *Simple Icons* — search by service name; icons are fetched from [cdn.simpleicons.org](https://cdn.simpleicons.org)
-     - *Upload* — upload a PNG, SVG, JPG, or GIF; stored in your browser
+   - **Icon** — use unified search (Simple Icons + Homelab SVG), or upload a PNG/SVG/JPG/GIF
 3. Set **Tile display options** (see below).
 4. Click **Save Tile**.
 
@@ -189,7 +186,7 @@ Open via the **⚙️** button in the header.
 |---|---|
 | Site title | Header logo text |
 | Subtitle | Header subtitle text |
-| Background image | Upload a PNG/JPG/etc. — stored in browser; displays behind the tile grid |
+| Background image | Upload a PNG/JPG/etc. — stored server-side; displays behind the tile grid |
 | Tile transparency | Slider 10 %–100 %; lower = more transparent tiles, more background visible |
 
 ### Links
@@ -229,29 +226,30 @@ Per-tile override: enable **Override: open in new tab** in the tile editor to se
 
 1. Open **Settings** → **Appearance**.
 2. Click **📁 Upload** next to *Background image* and pick any image file.
-3. The image is stored in your browser and applied immediately.
+3. The image is stored server-side and applied immediately.
 4. Use the **Tile transparency** slider to make tiles more or less opaque over the background.
 5. To remove the background, click **✕ Remove** that appears after uploading.
 
 ---
 
-## Using Simple Icons
+## Using Unified Icon Search
 
 When adding or editing a tile:
 
-1. Under **Icon**, click the **Simple Icons** tab.
+1. Under **Icon**, keep the **Icon Search** tab selected.
 2. Type a service name (e.g. `portainer`, `grafana`, `nextcloud`, `jellyfin`).
 3. Click **Search** (or press Enter).
-4. Click any matching icon to select it — the tile preview updates immediately.
-5. If no icon is found, switch to the **Upload** tab to upload your own.
+4. Results from both supported sources appear together with source labels.
+5. Click any matching icon to select it — the tile preview updates immediately.
+6. If no icon is found, switch to the **Upload** tab to upload your own.
 
-Icons are fetched from [cdn.simpleicons.org](https://cdn.simpleicons.org) — requires internet access on the browser.
+Icons are fetched from [cdn.simpleicons.org](https://cdn.simpleicons.org) and [homelab-svg-assets](https://github.com/loganmarchione/homelab-svg-assets) — requires internet access on the browser.
 
 ---
 
 ## Configuration File (`config.json`)
 
-On first visit (no `localStorage` data), QLS reads `config.json` to pre-populate tiles:
+QLS reads `config.json` from the server on startup:
 
 ```json
 {
@@ -269,7 +267,7 @@ On first visit (no `localStorage` data), QLS reads `config.json` to pre-populate
       "id": "portainer",
       "label": "Portainer",
       "url": "http://nuc:9000",
-      "icon": "🐳",
+      "icon": "https://cdn.simpleicons.org/portainer",
       "description": "Container management",
       "category": "Infrastructure"
     }
