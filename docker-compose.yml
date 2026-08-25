@@ -1,42 +1,21 @@
 version: "3.8"
 
 services:
-  # Static file server for the dashboard
-  frontend:
-    image: nginx:alpine
-    container_name: qls-frontend
-    restart: unless-stopped
-    ports:
-      - "5555:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - .:/usr/share/nginx/html:ro
-    depends_on:
-      - status-api
-
-  # Lightweight container status API
-  status-api:
+  qls:
     build:
       context: .
-      dockerfile: Dockerfile.status
-    container_name: qls-status
+      dockerfile: Dockerfile
+    container_name: qls
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5555:5000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # config.json must exist as a file before starting (e.g. `touch config.json`).
-      # Docker will create a directory instead of a file if the path does not exist.
-      - ./config.json:/app/config.json
-      # background.dat stores the dashboard background image server-side.
-      # Pre-create it so Docker doesn't create a directory: touch background.dat
-      - ./background.dat:/app/background.dat
+      - qls-data:/data
     environment:
-      # Optionally restrict to specific containers (comma-separated)
+      # Optionally restrict Docker container status to specific containers (comma-separated)
       CONTAINERS: ""
       PORT: "5000"
-      # Set CORS_ORIGIN to the dashboard URL to restrict cross-origin access,
-      # e.g. http://192.168.1.10:8080
-      # When running behind nginx (recommended), CORS is not needed because
-      # the browser hits /api/status on the same origin as the dashboard.
-      CORS_ORIGIN: ""
+
+volumes:
+  qls-data:
