@@ -5,7 +5,6 @@ Single-container Flask server.
 
 Serves the dashboard (HTML/CSS/JS/assets) and exposes:
   GET  /                          →  dashboard HTML
-  GET  /api/status                →  { "container_name": "up"|"down", … }
   GET  /api/config                →  current config.json content
   POST /api/config                →  overwrite config.json with request body
   GET  /api/config/background     →  background image data URL (text/plain)
@@ -16,13 +15,11 @@ Serves the dashboard (HTML/CSS/JS/assets) and exposes:
   GET  /api/assets/<filename>     →  serve a stored asset file
 
 Usage:
-    pip install flask docker requests
+    pip install flask requests
     python status.py
 
 Environment variables:
     PORT          (default 5000)
-    CONTAINERS    comma-separated list of container names to watch;
-                  leave empty to return all containers
     CONFIG_PATH   path to config.json (default ./config.json)
     BG_PATH       path to background data file (default ./background.dat)
     ASSETS_DIR    directory for downloaded assets (default ./assets)
@@ -40,12 +37,6 @@ import socket
 import urllib.parse
 from flask import Flask, jsonify, make_response, request, send_from_directory
 from flask.wrappers import Response
-
-try:
-    import docker
-    DOCKER_AVAILABLE = True
-except ImportError:
-    DOCKER_AVAILABLE = False
 
 try:
     import requests as _requests
@@ -69,37 +60,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def get_status() -> dict:
-    if not DOCKER_AVAILABLE:
-        return {"error": "docker SDK not installed (pip install docker)"}
-
-    try:
-        client = docker.from_env()
-    except Exception as exc:
-        logger.error("Docker client error: %s", exc)
-        return {"error": "Could not connect to Docker"}
-
-    filter_names = [
-        n.strip()
-        for n in os.environ.get("CONTAINERS", "").split(",")
-        if n.strip()
-    ]
-
-    result = {}
-    try:
-        containers = client.containers.list(all=True)
-        for c in containers:
-            name = c.name
-            if filter_names and name not in filter_names:
-                continue
-            result[name] = "up" if c.status == "running" else "down"
-    except Exception as exc:
-        logger.error("Error listing containers: %s", exc)
-        return {"error": "Failed to list containers"}
-
-    return result
-
-
 @app.after_request
 def add_cors(response: Response) -> Response:
     # Restrict the allowed origin in production; defaults to same-host only.
@@ -109,11 +69,6 @@ def add_cors(response: Response) -> Response:
     if origin:
         response.headers["Access-Control-Allow-Origin"] = origin
     return response
-
-
-@app.route("/api/status")
-def status():
-    return jsonify(get_status())
 
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", os.path.join(os.path.dirname(__file__), "config.json"))

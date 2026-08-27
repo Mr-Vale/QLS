@@ -29,14 +29,9 @@ let state = {
     // Reachability (direct URL ping)
     reachabilityEnabled: false,
     reachIntervalSeconds: 30,
-    // Docker status API (optional)
-    statusEnabled: false,
-    statusApiUrl: '/api/status',
-    pollIntervalSeconds: 30,
   },
-  status: {},         // { tileId|containerName: 'up'|'down'|'unknown' }
+  status: {},         // { tileId: 'up'|'down'|'unknown' }
   editMode: false,
-  pollTimer: null,
   reachTimer: null,
   dragSrcId: null,
 };
@@ -78,7 +73,6 @@ function startServerReconnectPolling() {
         }
         applyUISettings();
         renderTiles();
-        restartStatusPolling();
         restartReachabilityPolling();
         showToast('Server connection restored.', 'success', 2600);
       }
@@ -105,7 +99,13 @@ function notifyServerUnavailable() {
 }
 
 function saveStateToServer() {
-  const { backgroundImage, ...settingsWithoutBg } = state.settings;
+  const {
+    backgroundImage,
+    statusEnabled,
+    statusApiUrl,
+    pollIntervalSeconds,
+    ...settingsWithoutBg
+  } = state.settings;
   const payload = { settings: settingsWithoutBg, tiles: state.tiles };
   fetch(CONFIG_URL, {
     method: 'POST',
@@ -313,10 +313,6 @@ function buildTileEl(tile) {
 
   if (!showStatus) {
     statusDot.style.display = 'none';
-  } else if (tile.container) {
-    // Docker API status
-    setStatusDotClass(statusDot, state.status[tile.container]);
-    statusDot.title = `${tile.container}: ${state.status[tile.container] || 'unknown'}`;
   } else if (state.settings.reachabilityEnabled && tile.url) {
     // URL reachability status
     setStatusDotClass(statusDot, state.status[tile.id]);
@@ -489,7 +485,6 @@ const fLabel          = document.getElementById('f-label');
 const fUrl            = document.getElementById('f-url');
 const fDesc           = document.getElementById('f-desc');
 const fCategory       = document.getElementById('f-category');
-const fContainer      = document.getElementById('f-container');
 const fShowIcon       = document.getElementById('f-show-icon');
 const fShowTitle      = document.getElementById('f-show-title');
 const fShowDesc       = document.getElementById('f-show-desc');
@@ -532,7 +527,6 @@ function openEditModal(id) {
   fUrl.value       = tile.url || '';
   fDesc.value      = tile.description || '';
   fCategory.value  = tile.category || '';
-  fContainer.value = tile.container || '';
   fShowIcon.checked   = tile.showIcon   !== false;
   fShowTitle.checked  = tile.showTitle  !== false;
   fShowDesc.checked   = tile.showDesc   !== false;
@@ -596,7 +590,6 @@ tileForm.addEventListener('submit', (e) => {
     description: fDesc.value.trim(),
     icon: iconVal,
     category: fCategory.value.trim(),
-    container: fContainer.value.trim(),
     showIcon:   fShowIcon.checked,
     showTitle:  fShowTitle.checked,
     showDesc:   fShowDesc.checked,
@@ -888,9 +881,6 @@ function syncSettingsUI() {
   document.getElementById('s-new-tab').checked         = state.settings.openInNewTab;
   document.getElementById('s-reach-enabled').checked   = state.settings.reachabilityEnabled;
   document.getElementById('s-reach-interval').value    = state.settings.reachIntervalSeconds;
-  document.getElementById('s-status-enabled').checked  = state.settings.statusEnabled;
-  document.getElementById('s-status-url').value        = state.settings.statusApiUrl;
-  document.getElementById('s-poll-interval').value     = state.settings.pollIntervalSeconds;
   const opacityEl = document.getElementById('s-opacity');
   opacityEl.value = state.settings.tileOpacity;
   document.getElementById('s-opacity-val').textContent = `${state.settings.tileOpacity}%`;
@@ -903,16 +893,12 @@ function readSettingsUI() {
   state.settings.openInNewTab         = document.getElementById('s-new-tab').checked;
   state.settings.reachabilityEnabled  = document.getElementById('s-reach-enabled').checked;
   state.settings.reachIntervalSeconds = parseInt(document.getElementById('s-reach-interval').value, 10) || 30;
-  state.settings.statusEnabled        = document.getElementById('s-status-enabled').checked;
-  state.settings.statusApiUrl         = document.getElementById('s-status-url').value.trim() || '/api/status';
-  state.settings.pollIntervalSeconds  = parseInt(document.getElementById('s-poll-interval').value, 10) || 30;
   state.settings.tileOpacity          = parseInt(document.getElementById('s-opacity').value, 10) || 90;
 }
 
 // Live-apply settings
 [
   's-title', 's-subtitle', 's-new-tab', 's-reach-enabled', 's-reach-interval',
-  's-status-enabled', 's-status-url', 's-poll-interval',
 ].forEach(id => {
   document.getElementById(id).addEventListener('change', applySettings);
 });
@@ -930,7 +916,6 @@ function applySettings() {
   readSettingsUI();
   saveState();
   applyUISettings();
-  restartStatusPolling();
   restartReachabilityPolling();
   renderTiles(); // re-render to apply new-tab changes
 }
@@ -1003,13 +988,18 @@ document.getElementById('s-import-file').addEventListener('change', (e) => {
   reader.onload = (ev) => {
     try {
       const parsed = JSON.parse(ev.target.result);
-      if (Array.isArray(parsed.tiles)) state.tiles = parsed.tiles;
+      if (Array.isArray(parsed.tiles)) {
+        state.tiles = parsed.tiles.map(t => {
+          const normalized = { id: t.id || uid(), ...t };
+          delete normalized.container;
+          return normalized;
+        });
+      }
       if (parsed.settings) state.settings = { ...state.settings, ...parsed.settings };
       saveState();
       syncSettingsUI();
       applyUISettings();
       renderTiles();
-      restartStatusPolling();
       restartReachabilityPolling();
       showToast('Config imported.', 'success');
     } catch (_) {
@@ -1030,9 +1020,6 @@ document.getElementById('s-reset').addEventListener('click', () => {
     openInNewTab: true,
     reachabilityEnabled: false,
     reachIntervalSeconds: 30,
-    statusEnabled: false,
-    statusApiUrl: '/api/status',
-    pollIntervalSeconds: 30,
   };
   state.tiles = [];
   state.settings = { ...defaults };
@@ -1041,7 +1028,6 @@ document.getElementById('s-reset').addEventListener('click', () => {
   syncSettingsUI();
   applyUISettings();
   renderTiles();
-  restartStatusPolling();
   restartReachabilityPolling();
   showToast('Reset to defaults.', 'info');
 });
@@ -1074,7 +1060,7 @@ async function checkTileReachability(tile) {
 
 async function pollReachability() {
   if (!state.settings.reachabilityEnabled) return;
-  const tilesWithUrl = state.tiles.filter(t => t.url && t.showStatus !== false && !t.container);
+  const tilesWithUrl = state.tiles.filter(t => t.url && t.showStatus !== false);
   await Promise.allSettled(tilesWithUrl.map(checkTileReachability));
   updateStatusBar();
 }
@@ -1082,8 +1068,8 @@ async function pollReachability() {
 function updateStatusBar() {
   const statusBarDot  = document.getElementById('status-bar-dot');
   const statusBarText = document.getElementById('status-bar-text');
-  if (!state.settings.reachabilityEnabled && !state.settings.statusEnabled) {
-    statusBarText.textContent = 'Status off';
+  if (!state.settings.reachabilityEnabled) {
+    statusBarText.textContent = 'Reachability off';
     statusBarDot.classList.remove('live');
     return;
   }
@@ -1099,62 +1085,13 @@ function updateStatusBar() {
 function restartReachabilityPolling() {
   if (state.reachTimer) clearInterval(state.reachTimer);
   if (!state.settings.reachabilityEnabled) {
+    state.status = {};
     updateStatusBar();
+    renderTiles();
     return;
   }
   pollReachability();
   state.reachTimer = setInterval(pollReachability, state.settings.reachIntervalSeconds * 1000);
-}
-
-/* ============================================================
-   Container Status API polling (optional Docker backend)
-   ============================================================ */
-const statusBarDot  = document.getElementById('status-bar-dot');
-const statusBarText = document.getElementById('status-bar-text');
-
-async function pollStatus() {
-  if (!state.settings.statusEnabled) return;
-  document.querySelectorAll('.status-dot').forEach(el => {
-    const tile = state.tiles.find(t => t.id === el.dataset.tileid);
-    if (tile && tile.container) setStatusDotClass(el, 'checking');
-  });
-
-  try {
-    const resp = await fetch(state.settings.statusApiUrl, { cache: 'no-store' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    // Merge container statuses into state.status using container name as key
-    Object.assign(state.status, data);
-    statusBarDot.classList.add('live');
-    const upCount = Object.values(data).filter(v => v === 'up').length;
-    statusBarText.textContent = `${upCount}/${Object.keys(data).length} up`;
-    updateContainerDots();
-  } catch (_) {
-    statusBarDot.classList.remove('live');
-    statusBarText.textContent = 'API unreachable';
-    updateContainerDots();
-  }
-}
-
-function updateContainerDots() {
-  document.querySelectorAll('.tile').forEach(tileEl => {
-    const tile = state.tiles.find(t => t.id === tileEl.dataset.id);
-    if (!tile || !tile.container) return;
-    const dot = tileEl.querySelector('.status-dot');
-    if (!dot) return;
-    setStatusDotClass(dot, state.status[tile.container]);
-    dot.title = `${tile.container}: ${state.status[tile.container] || 'unknown'}`;
-  });
-}
-
-function restartStatusPolling() {
-  if (state.pollTimer) clearInterval(state.pollTimer);
-  if (!state.settings.statusEnabled) {
-    updateStatusBar();
-    return;
-  }
-  pollStatus();
-  state.pollTimer = setInterval(pollStatus, state.settings.pollIntervalSeconds * 1000);
 }
 
 /* ============================================================
@@ -1168,6 +1105,15 @@ async function loadServerConfig() {
     const cfg = await resp.json();
     if (cfg.settings) {
       state.settings = { ...state.settings, ...cfg.settings };
+      if (cfg.settings.statusEnabled !== undefined && cfg.settings.reachabilityEnabled === undefined) {
+        state.settings.reachabilityEnabled = cfg.settings.statusEnabled;
+      }
+      if (cfg.settings.pollIntervalSeconds && cfg.settings.reachIntervalSeconds === undefined) {
+        state.settings.reachIntervalSeconds = cfg.settings.pollIntervalSeconds;
+      }
+      delete state.settings.statusEnabled;
+      delete state.settings.statusApiUrl;
+      delete state.settings.pollIntervalSeconds;
     } else {
       // Legacy config.json format (site/status/tiles keys)
       if (cfg.site) {
@@ -1175,13 +1121,16 @@ async function loadServerConfig() {
         if (cfg.site.subtitle) state.settings.subtitle = cfg.site.subtitle;
       }
       if (cfg.status) {
-        if (cfg.status.enabled !== undefined)  state.settings.statusEnabled       = cfg.status.enabled;
-        if (cfg.status.apiUrl)                 state.settings.statusApiUrl        = cfg.status.apiUrl;
-        if (cfg.status.pollIntervalSeconds)    state.settings.pollIntervalSeconds = cfg.status.pollIntervalSeconds;
+        if (cfg.status.enabled !== undefined)       state.settings.reachabilityEnabled  = cfg.status.enabled;
+        if (cfg.status.pollIntervalSeconds)         state.settings.reachIntervalSeconds = cfg.status.pollIntervalSeconds;
       }
     }
     if (Array.isArray(cfg.tiles)) {
-      state.tiles = cfg.tiles.map(t => ({ id: t.id || uid(), ...t }));
+      state.tiles = cfg.tiles.map(t => {
+        const normalized = { id: t.id || uid(), ...t };
+        delete normalized.container;
+        return normalized;
+      });
     }
     state.backgroundVersion = typeof cfg.backgroundVersion === 'string' ? cfg.backgroundVersion : '';
 
@@ -1235,7 +1184,6 @@ async function init() {
 
   applyUISettings();
   renderTiles();
-  restartStatusPolling();
   restartReachabilityPolling();
 }
 
