@@ -22,7 +22,7 @@
     <div class="header-right">
       <div class="status-bar" id="status-bar" title="Reachability status">
         <div class="status-bar-dot" id="status-bar-dot"></div>
-        <span id="status-bar-text">Status off</span>
+        <span id="status-bar-text">Reachability off</span>
       </div>
       <button class="btn btn-primary btn-icon" id="btn-add" title="Add tile (Ctrl+K)" aria-label="Add tile">＋</button>
       <button class="btn btn-ghost btn-icon" id="btn-edit-mode" title="Toggle edit mode" aria-label="Toggle edit mode">✏️</button>
@@ -133,14 +133,6 @@
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" for="f-container">Container name</label>
-            <input class="form-input" id="f-container" type="text" placeholder="portainer" maxlength="80" />
-            <p class="form-hint">Docker container for API status</p>
-          </div>
-        </div>
-
         <div class="form-actions">
           <button type="button" class="btn btn-ghost" id="tile-form-cancel">Cancel</button>
           <button type="submit" class="btn btn-primary" id="tile-form-submit">Save Tile</button>
@@ -245,32 +237,6 @@
           <div class="setting-name">Poll interval (s)</div>
         </div>
         <input class="form-input" id="s-reach-interval" type="number" min="5" max="300" style="width:80px;" />
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <div class="settings-section-label">Container Status API (optional)</div>
-      <div class="setting-row">
-        <div class="setting-info">
-          <div class="setting-name">Enable API status</div>
-          <div class="setting-desc">Poll /api/status for Docker states</div>
-        </div>
-        <label class="toggle">
-          <input type="checkbox" id="s-status-enabled" />
-          <div class="toggle-track"></div>
-        </label>
-      </div>
-      <div class="setting-row">
-        <div class="setting-info">
-          <div class="setting-name">API URL</div>
-        </div>
-        <input class="form-input" id="s-status-url" type="text" placeholder="/api/status" style="width:130px;" />
-      </div>
-      <div class="setting-row">
-        <div class="setting-info">
-          <div class="setting-name">Poll interval (s)</div>
-        </div>
-        <input class="form-input" id="s-poll-interval" type="number" min="5" max="300" style="width:80px;" />
       </div>
     </div>
 

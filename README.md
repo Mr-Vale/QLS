@@ -11,8 +11,7 @@ A fast, polished homelab homepage. Manage tiles, icons, backgrounds, and status 
 - ➕ **Add / Edit / Delete tiles** — modal dialog, no code needed
 - ↕️ **Drag-and-drop** or **↑↓ buttons** to reorder tiles
 - 🗂️ **Category grouping** — tiles can be organised into labelled sections
-- 🟢 **Reachability status** — pings each tile URL directly; no backend needed
-- 🐳 **Optional Docker API** — lightweight Flask API for container states
+- 🟢 **Reachability status** — pings each tile URL directly from the browser
 - 🖼️ **Custom background** — upload any image via Settings
 - 🔲 **Tile transparency** — adjustable opacity slider so the background shows through
 - 🔗 **New-tab control** — global default plus per-tile override
@@ -158,7 +157,7 @@ Each tile has individual toggles:
 
 ## Status Indicators
 
-### Reachability (built-in, no backend)
+### Reachability
 
 QLS can ping each tile's URL directly from the browser:
 
@@ -177,22 +176,11 @@ Each tile gets a coloured dot:
 
 > **Note:** The browser uses `no-cors` mode for cross-origin requests, so the status dot shows whether the host is network-reachable, not the HTTP status code.
 
-### Docker container status (optional)
-
-The same Flask server exposes `GET /api/status` for Docker container states.
-
-In **Settings → Container Status API**:
-
-- Enable the toggle
-- Set **API URL** to `/api/status`
-- Set each tile's **Container name** to the Docker container name
-
 #### Environment variables
 
 | Variable     | Default | Description |
 |---|---|---|
 | `PORT`       | `5000`  | Port for the Flask server |
-| `CONTAINERS` | *(all)* | Comma-separated container names to watch; empty = all |
 | `CONFIG_PATH` | `./config.json` | Path to the config file |
 | `BG_PATH`    | `./background.dat` | Path to the background image file |
 | `ASSETS_DIR` | `./assets` | Directory for cached icon/image files |
@@ -227,14 +215,6 @@ Per-tile override: enable **Override: open in new tab** in the tile editor.
 |---|---|
 | Enable reachability | Toggle polling of each tile's URL |
 | Poll interval (s) | How often to re-check (default 30 s) |
-
-### Container Status API (optional)
-
-| Setting | Description |
-|---|---|
-| Enable API status | Poll the Docker status endpoint |
-| API URL | Endpoint (default `/api/status`) |
-| Poll interval (s) | Refresh frequency |
 
 ### Data
 
@@ -279,7 +259,9 @@ QLS reads `config.json` from the server on startup:
     "title": "HomeLab",
     "subtitle": "Quick Links & Status",
     "tileOpacity": 90,
-    "openInNewTab": true
+    "openInNewTab": true,
+    "reachabilityEnabled": true,
+    "reachIntervalSeconds": 30
   },
   "tiles": [
     {
@@ -305,7 +287,7 @@ QLS/
 ├── index.html          # Dashboard UI
 ├── style.css           # Dark theme + responsive layout
 ├── app.js              # Tile management, icons, reachability, settings
-├── status.py           # Flask server (dashboard + config API + Docker status)
+├── status.py           # Flask server (dashboard + config/background/assets API)
 ├── requirements.txt    # Python dependencies
 ├── Dockerfile          # Single-container image
 ├── docker-compose.yml  # Single-service deployment (port 5555)
@@ -338,7 +320,6 @@ Data files (not in the image; stored in the `qls-data` volume or local directory
 - All dashboard changes are saved **server-side** automatically. Every device that loads the site sees the same current state.
 - Icons fetched from the internet are downloaded and cached in `assets/`. The dashboard continues to display them offline after that.
 - Put QLS behind a reverse proxy (Traefik, Caddy, nginx) if you want HTTPS or a cleaner URL.
-- The `docker.sock` mount is read-only — no write access to Docker.
 
 ---
 

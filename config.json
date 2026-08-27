@@ -1,13 +1,11 @@
 {
-  "site": {
+  "settings": {
     "title": "HomeLab",
     "subtitle": "Quick Links & Status",
-    "theme": "dark"
-  },
-  "status": {
-    "enabled": true,
-    "apiUrl": "/api/status",
-    "pollIntervalSeconds": 30
+    "tileOpacity": 90,
+    "openInNewTab": true,
+    "reachabilityEnabled": true,
+    "reachIntervalSeconds": 30
   },
   "tiles": [
     {
@@ -16,8 +14,7 @@
       "url": "http://localhost:9000",
       "icon": "https://cdn.simpleicons.org/portainer",
       "description": "Container management",
-      "category": "Infrastructure",
-      "container": "portainer"
+      "category": "Infrastructure"
     },
     {
       "id": "grafana",
@@ -25,8 +22,7 @@
       "url": "http://localhost:3000",
       "icon": "https://cdn.simpleicons.org/grafana",
       "description": "Metrics & dashboards",
-      "category": "Monitoring",
-      "container": "grafana"
+      "category": "Monitoring"
     },
     {
       "id": "prometheus",
@@ -34,8 +30,7 @@
       "url": "http://localhost:9090",
       "icon": "https://cdn.simpleicons.org/prometheus",
       "description": "Metrics scraping",
-      "category": "Monitoring",
-      "container": "prometheus"
+      "category": "Monitoring"
     },
     {
       "id": "pihole",
@@ -43,8 +38,7 @@
       "url": "http://localhost:8080",
       "icon": "https://cdn.simpleicons.org/pihole",
       "description": "DNS ad blocking",
-      "category": "Network",
-      "container": "pihole"
+      "category": "Network"
     },
     {
       "id": "nextcloud",
@@ -52,8 +46,7 @@
       "url": "http://localhost:8081",
       "icon": "https://cdn.simpleicons.org/nextcloud",
       "description": "Personal cloud storage",
-      "category": "Storage",
-      "container": "nextcloud"
+      "category": "Storage"
     },
     {
       "id": "jellyfin",
@@ -61,8 +54,7 @@
       "url": "http://localhost:8096",
       "icon": "https://cdn.simpleicons.org/jellyfin",
       "description": "Media server",
-      "category": "Media",
-      "container": "jellyfin"
+      "category": "Media"
     }
   ]
 }
